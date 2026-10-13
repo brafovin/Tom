@@ -3,11 +3,11 @@
 //  Gegner (Bots): suchen Kisten, kämpfen, bauen, laufen vor dem Sturm weg
 // ============================================================
 const BOT_NAMES = ['Max', 'Leon', 'Finn', 'Paul', 'Jonas', 'Ben', 'Luca', 'Noah', 'Emil', 'Mia', 'Lena', 'Emma',
-  'Hannah', 'Sophie', 'Lea', 'Elias', 'Felix', 'Anton', 'Ida', 'Clara'];
+  'Hannah', 'Sophie', 'Lea', 'Elias', 'Felix', 'Anton', 'Ida', 'Clara', 'Theo', 'Lina', 'Henry', 'Marie', 'Jakob', 'Frieda'];
 const DIFFICULTY = {
-  leicht: { name: 'Leicht', err: 0.09, react: 0.9, dmg: 0.4, build: 0.15, bots: 12 },
-  normal: { name: 'Normal', err: 0.058, react: 0.55, dmg: 0.65, build: 0.35, bots: 15 },
-  schwer: { name: 'Schwer', err: 0.034, react: 0.3, dmg: 0.95, build: 0.6, bots: 19 },
+  leicht: { name: 'Leicht', err: 0.09, react: 0.9, dmg: 0.4, build: 0.15, bots: 14 },
+  normal: { name: 'Normal', err: 0.058, react: 0.55, dmg: 0.65, build: 0.35, bots: 18 },
+  schwer: { name: 'Schwer', err: 0.034, react: 0.3, dmg: 0.95, build: 0.6, bots: 24 },
 };
 const PREF_DIST = { pistol: 16, smg: 11, ar: 24, shotgun: 5, sniper: 55, rocket: 24 };
 
@@ -140,11 +140,14 @@ class Bot {
       }
       if (best) { this.goal = best.clone(); this.goalT = 25; return; }
     }
-    // sonst irgendwo in der sicheren Zone herumlaufen
-    const a = Math.random() * Math.PI * 2, r = Math.random() * Math.max(5, zc.r * 0.7);
-    this.goal = new THREE.Vector3(zc.x + Math.cos(a) * r, 0, zc.z + Math.sin(a) * r);
-    this.goal.x = clamp(this.goal.x, -MAP_HALF + 5, MAP_HALF - 5);
-    this.goal.z = clamp(this.goal.z, -MAP_HALF + 5, MAP_HALF - 5);
+    // sonst irgendwo in der sicheren Zone herumlaufen (nicht ins Wasser)
+    for (let tries = 0; tries < 8; tries++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * Math.max(5, Math.min(zc.r, 160) * 0.7);
+      this.goal = new THREE.Vector3(zc.x + Math.cos(a) * r, 0, zc.z + Math.sin(a) * r);
+      this.goal.x = clamp(this.goal.x, -MAP_HALF + 5, MAP_HALF - 5);
+      this.goal.z = clamp(this.goal.z, -MAP_HALF + 5, MAP_HALF - 5);
+      if (!isWater(this.goal.x, this.goal.z)) break;
+    }
     this.goalT = 20;
   }
 
@@ -160,7 +163,12 @@ class Bot {
       if (d2 > bd) continue;
       const to = e.pos.clone().sub(this.pos).setY(0).normalize();
       if (d2 > 25 * 25 && to.dot(fwd) < -0.2) continue;
-      const te = new THREE.Vector3(e.pos.x, e.pos.y + 1.4, e.pos.z);
+      // Schleichende Spieler sind schwerer zu entdecken
+      if (e.crouching && e.slideT <= 0) {
+        if (d2 > (range * 0.45) ** 2) continue;
+        if (d2 > 36 && to.dot(fwd) < 0.35) continue;
+      }
+      const te = new THREE.Vector3(e.pos.x, e.pos.y + e.h * 0.78, e.pos.z);
       if (!lineOfSight(eye, te)) continue;
       // Spieler werden etwas bevorzugt, damit es spannend bleibt
       const score = e.isPlayer ? d2 * 0.7 : d2;
@@ -250,6 +258,7 @@ class Bot {
     }
     const ml = Math.hypot(mvx, mvz);
     if (ml > 0.01) { mvx /= ml; mvz /= ml; }
+    if (this.swimming) speed = 3.2;
     // Hindernis: springen oder kaputt machen
     if (ml > 0.01) {
       this.stuckT += dt;
@@ -302,14 +311,14 @@ class Bot {
 
   tryShoot(dist) {
     const w = WEAPONS[this.weapon.key];
-    if (this.reloadT > 0 || this.fireT > 0 || this.reactT > 0) return;
+    if (this.reloadT > 0 || this.fireT > 0 || this.reactT > 0 || this.swimming) return;
     if ((this.aimErr || 0) > 0.25) return;
     if (dist > w.range * 0.9) return;
     const eye = this.eye();
     let aim;
     if (this.seeTarget) {
       const t = this.target;
-      aim = new THREE.Vector3(t.pos.x, t.pos.y + (Math.random() < 0.15 ? 1.65 : 1.1), t.pos.z);
+      aim = new THREE.Vector3(t.pos.x, t.pos.y + (Math.random() < 0.15 ? t.h - 0.15 : t.h * 0.6), t.pos.z);
       // etwas vorhalten
       aim.addScaledVector(t.vel, dist / 200);
     } else {

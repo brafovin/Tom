@@ -8,7 +8,7 @@ const BUILD_HP = { wood: 150, stone: 300, metal: 450 };
 const BUILD_TYPES = {
   wall: { name: 'Wand', key: 'Q' },
   floor: { name: 'Boden', key: 'X' },
-  ramp: { name: 'Rampe', key: 'C' },
+  ramp: { name: 'Rampe', key: 'V' },
 };
 
 const Builds = {

@@ -19,6 +19,15 @@ npx serve .
 
 ## Was drin ist
 
+- **Große Karte** (600 × 600 m) mit Landstraßen aus der Stadt hinaus
+- **Wasser**: drei Seen und ein Fluss mit Brücken. Im Wasser schwimmt man,
+  schießen und bauen geht dort nicht
+- **Die Insel** mitten im Inselsee: eine Hütte mit einer lila Schatzkiste
+  voller seltener Waffen. Zwei Stege helfen beim Rüberschwimmen
+- **Schleichen** (Bots entdecken dich schwerer), **Rutschen** und **Klettern**
+  an Wänden, Häusern und Bauten
+- **Waffenschaden sichtbar**: Werte-Karte rechts unten, Schaden auf jedem
+  Inventar-Platz, Werte beim Aufheben und eine Waffentabelle im Menü
 - **Stadt** mit 10 Gebäuden, Straßen mit Mittellinien und Zebrastreifen,
   einer **Kirche** mit Turm, Glocke, Bänken und Altar
 - **Ampeln**, die wirklich umschalten (rot, gelb, grün), **Mülltonnen** in
@@ -43,6 +52,9 @@ npx serve .
 | W A S D | Laufen |
 | Shift | Sprinten |
 | Leertaste | Springen |
+| C halten | Schleichen |
+| Shift + C | Rutschen (beim Sprinten) |
+| W + Leertaste halten | An einer Wand hochklettern |
 | Maus | Umsehen |
 | Linksklick | Schießen, Abbauen, Bauen, Heilen |
 | Rechtsklick | Zielen |
@@ -50,7 +62,7 @@ npx serve .
 | 2 bis 7, Mausrad | Inventar-Platz wählen |
 | E | Kiste öffnen, Gegenstand aufheben |
 | R | Nachladen |
-| Q / X / C | Wand / Boden / Rampe bauen |
+| Q / X / V | Wand / Boden / Rampe bauen |
 | T | Baumaterial wechseln (Holz, Stein, Metall) |
 | G | Gegenstand fallen lassen |
 | M | Große Karte |
@@ -63,6 +75,7 @@ npx serve .
 | `index.html` | Seite, Anzeige und Menü |
 | `css/style.css` | Aussehen der Anzeige |
 | `js/util.js` | Zufall, Texturen, Geometrie, Sound |
+| `js/terrain.js` | Gelände, Seen, Fluss, Brücken, Wasser |
 | `js/physics.js` | Kollisionen, Rampen, Schuss-Strahlen, zerstörbare Teile |
 | `js/effects.js` | Splitter, Leuchtspuren, Explosionen, Schadenszahlen |
 | `js/items.js` | Waffen, Heilung, Munition, Kisten, Boden-Beute |

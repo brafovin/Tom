@@ -93,7 +93,7 @@ function overlapsBox(c, x, y, z, r, h) {
 
 // Höchste begehbare Fläche unter (x,z), die nicht höher als maxY ist
 function groundHeight(x, z, r, maxY) {
-  let best = 0;
+  let best = terrainH(x, z);
   const rr = r * 0.85;
   Phys.query(x - rr, z - rr, x + rr, z + rr, _q);
   for (const c of _q) {
@@ -152,6 +152,23 @@ function moveBody(b, dt, gravity = GRAVITY, maxFall = 60) {
   for (let i = 0; i < steps; i++) {
     if (moveAxis(b, 0, dx / steps)) b.blocked = true;
     if (moveAxis(b, 2, dz / steps)) b.blocked = true;
+  }
+  // Schwimmen: im tiefen Wasser treibt man oben
+  const th = terrainH(p.x, p.z);
+  const floatY = WATER_Y - 1.25;
+  const wasSwimming = b.swimming;
+  b.swimming = th < SWIM_DEPTH && p.y < floatY + 0.4;
+  if (b.swimming) {
+    if (!wasSwimming && b.vel.y < -3) {
+      Effects.sparks(new THREE.Vector3(p.x, WATER_Y + 0.1, p.z), '#cdeeff', 14, new THREE.Vector3(0, 1, 0));
+      Sound.play('splash', p);
+    }
+    b.vel.y = (floatY - p.y) * 4;
+    p.y = Math.max(th, p.y + b.vel.y * dt);
+    b.onGround = false;
+    p.x = clamp(p.x, -MAP_HALF + 1, MAP_HALF - 1);
+    p.z = clamp(p.z, -MAP_HALF + 1, MAP_HALF - 1);
+    return;
   }
   // vertikal
   b.vel.y = Math.max(b.vel.y - gravity * dt, -maxFall);
@@ -232,8 +249,13 @@ function raycastWorld(o, d, maxDist, ignorePiece) {
   let best = maxDist, hit = null;
   let nx = 0, ny = 0, nz = 0;
   if (d.y < -1e-6) {
-    const tg = -o.y / d.y;
-    if (tg >= 0 && tg < best) { best = tg; hit = 'ground'; nx = 0; ny = 1; nz = 0; }
+    let tg = -o.y / d.y;
+    if (tg >= 0 && tg < best) {
+      if (isWater(o.x + d.x * tg, o.z + d.z * tg)) {
+        tg = (WATER_Y - o.y) / d.y;     // Treffer auf der Wasseroberfläche
+        if (tg >= 0 && tg < best) { best = tg; hit = 'water'; nx = 0; ny = 1; nz = 0; }
+      } else { best = tg; hit = 'ground'; nx = 0; ny = 1; nz = 0; }
+    }
   }
   let cx = Math.floor(o.x / CELL), cz = Math.floor(o.z / CELL);
   const stepX = d.x > 0 ? 1 : -1, stepZ = d.z > 0 ? 1 : -1;
@@ -261,7 +283,8 @@ function raycastWorld(o, d, maxDist, ignorePiece) {
     t: best,
     point: new THREE.Vector3(o.x + d.x * best, o.y + d.y * best, o.z + d.z * best),
     normal: new THREE.Vector3(nx, ny, nz),
-    collider: hit === 'ground' ? null : hit,
+    collider: hit === 'ground' || hit === 'water' ? null : hit,
+    water: hit === 'water',
   };
 }
 

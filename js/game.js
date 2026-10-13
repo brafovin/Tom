@@ -41,7 +41,7 @@ const Game = {
     const scene = new THREE.Scene();
     this.scene = scene;
     scene.background = new THREE.Color('#9fd0f2');
-    scene.fog = new THREE.Fog('#b4dbf5', 90, 380);
+    scene.fog = new THREE.Fog('#b4dbf5', 110, 470);
     // Himmel mit Farbverlauf
     const skyGeo = new THREE.SphereGeometry(900, 24, 16);
     const cols = [];
@@ -87,6 +87,13 @@ const Game = {
     this.player = new Player(this.camera, scene);
     this.player.alive = false;   // erst beim Start
     UI.init(this.info);
+    // Menü-Karte
+    const mm = $('menuMap');
+    if (mm) {
+      const g = mm.getContext('2d');
+      g.clearRect(0, 0, mm.width, mm.height);
+      g.drawImage(drawMapBase(mm.width, this.info, true), 0, 0);
+    }
   },
 
   start() {
@@ -98,7 +105,7 @@ const Game = {
     p.alive = true;
     Entities.push(p);
     const a = Math.random() * Math.PI * 2;
-    p.spawn(Math.cos(a) * 95, Math.sin(a) * 95);
+    p.spawn(Math.cos(a) * 150, Math.sin(a) * 150);
     // Bots verteilen
     this.bots = [];
     const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
@@ -169,7 +176,7 @@ const Game = {
 
   // ---------- Eingaben ----------
   bindInput() {
-    const prevent = new Set(['Space', 'Tab', 'KeyQ', 'KeyE', 'KeyR', 'KeyX', 'KeyC', 'KeyT', 'KeyG']);
+    const prevent = new Set(['Space', 'Tab', 'KeyQ', 'KeyE', 'KeyR', 'KeyX', 'KeyC', 'KeyV', 'KeyT', 'KeyG']);
     window.addEventListener('keydown', (e) => {
       if (this.state !== 'playing') return;
       if (prevent.has(e.code)) e.preventDefault();
@@ -227,6 +234,11 @@ const Game = {
   },
 
   bindMenu() {
+    buildWeaponTable();
+    document.querySelectorAll('.tabs [data-tab]').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('.tabs [data-tab]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.tabPanel').forEach(p => { p.hidden = p.dataset.panel !== b.dataset.tab; });
+    }));
     document.querySelectorAll('[data-diff]').forEach(b => b.addEventListener('click', () => {
       this.settings.diff = b.dataset.diff;
       document.querySelectorAll('[data-diff]').forEach(x => x.classList.toggle('on', x === b));
@@ -256,11 +268,12 @@ const Game = {
       Zone.update(dt);
     }
     if (this.state === 'menu') {
-      this.menuT += dt * 0.08;
-      this.camera.position.set(Math.cos(this.menuT) * 95, 45, Math.sin(this.menuT) * 95);
-      this.camera.lookAt(0, 8, 0);
+      this.menuT += dt * 0.05;
+      this.camera.position.set(Math.cos(this.menuT) * 150, 55 + Math.sin(this.menuT * 2) * 10, Math.sin(this.menuT) * 150);
+      this.camera.lookAt(Math.cos(this.menuT + 1.2) * 40, 4, Math.sin(this.menuT + 1.2) * 40);
     }
     TrafficLights.update(dt);
+    if (WATER_MAT) WATER_MAT.uniforms.time.value += dt;
     Chests.update(dt);
     GroundItems.update(dt);
     updatePieceShake(dt);

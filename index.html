@@ -29,9 +29,11 @@
   <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
   <div id="hitmarker"></div>
   <div id="pieceBar" hidden><div id="pieceFill"></div></div>
+  <div id="staminaBar" hidden><div id="staminaFill"></div></div>
   <div id="prompt" hidden></div>
   <div id="useBar" hidden><div id="useFill"></div><span id="useText"></span></div>
   <div id="glideHint" hidden>Du gleitest! Steuere mit <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> und lande irgendwo.</div>
+  <div id="moveState" hidden></div>
   <div id="toast"></div>
 
   <!-- Leben links unten -->
@@ -42,6 +44,7 @@
 
   <!-- Inventar rechts unten -->
   <div id="invBox">
+    <div id="statCard" hidden></div>
     <div id="itemInfo"><span id="itemName">Spitzhacke</span><span id="ammo"></span></div>
     <div id="mats"></div>
     <div id="slots"></div>
@@ -50,7 +53,7 @@
   <div id="buildBar">
     <div data-b="wall"><kbd>Q</kbd>Wand</div>
     <div data-b="floor"><kbd>X</kbd>Boden</div>
-    <div data-b="ramp"><kbd>C</kbd>Rampe</div>
+    <div data-b="ramp"><kbd>V</kbd>Rampe</div>
     <div class="hint"><kbd>T</kbd>Material</div>
   </div>
 
@@ -62,46 +65,113 @@
 
 <!-- ================= Menü ================= -->
 <div id="menu">
-  <div class="menuCard">
-    <div class="brand">
-      <h1>Sturm<span>stadt</span></h1>
-      <p class="tag">Lande in der Stadt, plündere Kisten, bau dich in Sicherheit und sei der Letzte, der steht, bevor der Sturm alles schluckt.</p>
-    </div>
-    <div class="menuGrid">
-      <section>
-        <h2>Gegner</h2>
-        <div class="seg">
-          <button data-diff="leicht">Leicht<small>12 Bots</small></button>
-          <button data-diff="normal" class="on">Normal<small>15 Bots</small></button>
-          <button data-diff="schwer">Schwer<small>19 Bots</small></button>
-        </div>
-        <h2>Einstellungen</h2>
-        <label class="opt"><input type="checkbox" id="optShadows" checked> Schatten (aus = schneller)</label>
+  <div class="lobby">
+    <section class="lobbyMain">
+      <div class="logo">
+        <div class="ring" aria-hidden="true"></div>
+        <h1>Sturm<span>stadt</span></h1>
+      </div>
+      <p class="tag">Spring aus dem Himmel, plündere Kisten, bau dich in Sicherheit und sei der Letzte, der steht, bevor der Sturm alles schluckt.</p>
+      <ul class="facts">
+        <li><b>600 m</b><span>große Karte</span></li>
+        <li><b>3</b><span>Seen &amp; ein Fluss</span></li>
+        <li><b>1</b><span>Insel mit Schatz</span></li>
+        <li><b>6</b><span>Waffen</span></li>
+      </ul>
+
+      <h2>Gegner</h2>
+      <div class="seg">
+        <button data-diff="leicht"><span class="pips"><i></i></span>Leicht<small>14 Bots</small></button>
+        <button data-diff="normal" class="on"><span class="pips"><i></i><i></i></span>Normal<small>18 Bots</small></button>
+        <button data-diff="schwer"><span class="pips"><i></i><i></i><i></i></span>Schwer<small>24 Bots</small></button>
+      </div>
+
+      <h2>Einstellungen</h2>
+      <div class="settings">
+        <label class="opt toggle"><input type="checkbox" id="optShadows" checked><span class="sw"></span>Schatten <small>aus = schneller</small></label>
         <label class="opt">Maus-Empfindlichkeit <input type="range" id="optSens" min="0.3" max="2.5" step="0.1" value="1"></label>
-        <button id="playBtn">Spielen</button>
-        <p class="note">Du brauchst Maus und Tastatur. Klick ins Bild, um die Maus zu fangen; <kbd>Esc</kbd> gibt sie wieder frei.</p>
-        <p id="menuError" hidden></p>
-      </section>
-      <section class="controls">
-        <h2>Steuerung</h2>
-        <dl>
-          <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Laufen</dd>
-          <dt><kbd>Shift</kbd></dt><dd>Sprinten</dd>
-          <dt><kbd>Leertaste</kbd></dt><dd>Springen</dd>
-          <dt>Maus</dt><dd>Umsehen</dd>
-          <dt>Linksklick</dt><dd>Schießen · Abbauen · Bauen · Heilen</dd>
-          <dt>Rechtsklick</dt><dd>Zielen</dd>
-          <dt><kbd>1</kbd></dt><dd>Spitzhacke</dd>
-          <dt><kbd>2</kbd>–<kbd>7</kbd> · Mausrad</dt><dd>Inventar-Platz wählen</dd>
-          <dt><kbd>E</kbd></dt><dd>Kiste öffnen · aufheben</dd>
-          <dt><kbd>R</kbd></dt><dd>Nachladen</dd>
-          <dt><kbd>Q</kbd> <kbd>X</kbd> <kbd>C</kbd></dt><dd>Wand · Boden · Rampe bauen</dd>
-          <dt><kbd>T</kbd></dt><dd>Holz · Stein · Metall wechseln</dd>
-          <dt><kbd>G</kbd></dt><dd>Gegenstand fallen lassen</dd>
-          <dt><kbd>M</kbd></dt><dd>Große Karte</dd>
-        </dl>
-      </section>
-    </div>
+      </div>
+
+      <button id="playBtn"><span>Spielen</span><small>mit dem Gleiter abspringen</small></button>
+      <p class="note">Du brauchst Maus und Tastatur. Klick ins Bild, um die Maus zu fangen; <kbd>Esc</kbd> gibt sie wieder frei.</p>
+      <p id="menuError" hidden></p>
+    </section>
+
+    <section class="lobbySide">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="controls" class="on" aria-selected="true">Steuerung</button>
+        <button role="tab" data-tab="weapons" aria-selected="false">Waffen</button>
+        <button role="tab" data-tab="map" aria-selected="false">Karte</button>
+        <button role="tab" data-tab="news" aria-selected="false">Neu</button>
+      </div>
+
+      <div class="tabPanel" data-panel="controls">
+        <div class="ctrlGroups">
+          <div>
+            <h3>Bewegen</h3>
+            <dl>
+              <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Laufen</dd>
+              <dt><kbd>Shift</kbd></dt><dd>Sprinten</dd>
+              <dt><kbd>Leertaste</kbd></dt><dd>Springen</dd>
+              <dt><kbd>C</kbd> halten</dt><dd>Schleichen</dd>
+              <dt><kbd>Shift</kbd> + <kbd>C</kbd></dt><dd>Rutschen</dd>
+              <dt><kbd>W</kbd> + <kbd>Leertaste</kbd></dt><dd>an Wand: Klettern</dd>
+              <dt>ins Wasser</dt><dd>Schwimmen</dd>
+            </dl>
+          </div>
+          <div>
+            <h3>Kämpfen</h3>
+            <dl>
+              <dt>Linksklick</dt><dd>Schießen · Abbauen · Heilen</dd>
+              <dt>Rechtsklick</dt><dd>Zielen</dd>
+              <dt><kbd>1</kbd></dt><dd>Spitzhacke</dd>
+              <dt><kbd>2</kbd>–<kbd>7</kbd></dt><dd>Inventar · auch Mausrad</dd>
+              <dt><kbd>R</kbd></dt><dd>Nachladen</dd>
+              <dt><kbd>E</kbd></dt><dd>Kiste öffnen · aufheben</dd>
+              <dt><kbd>G</kbd></dt><dd>Fallen lassen</dd>
+            </dl>
+          </div>
+          <div>
+            <h3>Bauen</h3>
+            <dl>
+              <dt><kbd>Q</kbd></dt><dd>Wand</dd>
+              <dt><kbd>X</kbd></dt><dd>Boden</dd>
+              <dt><kbd>V</kbd></dt><dd>Rampe</dd>
+              <dt><kbd>T</kbd></dt><dd>Holz · Stein · Metall</dd>
+              <dt><kbd>M</kbd></dt><dd>Große Karte</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabPanel" data-panel="weapons" hidden>
+        <p class="panelNote">Schaden pro Schuss je Seltenheit. Kopfschüsse machen mehr, bei der Schrotflinte zählen alle 10 Kugeln zusammen.</p>
+        <div class="tableWrap"><table id="weaponTable"></table></div>
+      </div>
+
+      <div class="tabPanel" data-panel="map" hidden>
+        <div class="mapWrap"><canvas id="menuMap" width="640" height="640"></canvas></div>
+        <ul class="legend">
+          <li><i style="background:#c9c4b8"></i>Stadt</li>
+          <li><i style="background:#f2efe6"></i>Kirche</li>
+          <li><i style="background:#3d8fd1"></i>Seen &amp; Fluss</li>
+          <li><i style="background:#8a5a2b"></i>Brücken &amp; Stege</li>
+          <li><i style="background:#c77dff"></i>Insel-Schatz</li>
+        </ul>
+      </div>
+
+      <div class="tabPanel" data-panel="news" hidden>
+        <ul class="news">
+          <li><b>Größere Karte</b>600 × 600 Meter mit Landstraßen aus der Stadt hinaus.</li>
+          <li><b>Seen und ein Fluss</b>Drei Seen, ein Fluss mit Brücken und Stegen. Im Wasser kann man schwimmen, aber nicht schießen.</li>
+          <li><b>Die Insel</b>Mitten im Inselsee steht eine Hütte mit einer lila Schatzkiste voller seltener Waffen.</li>
+          <li><b>Schleichen</b><kbd>C</kbd> halten: leise und langsam. Bots entdecken dich schwerer.</li>
+          <li><b>Rutschen</b>Beim Sprinten <kbd>C</kbd> drücken. Mit <kbd>Leertaste</kbd> springst du aus dem Rutschen weit nach vorn.</li>
+          <li><b>Klettern</b>Gegen eine Wand laufen und <kbd>Leertaste</kbd> halten. Der Balken unter dem Fadenkreuz zeigt deine Kraft.</li>
+          <li><b>Waffenschaden</b>Rechts unten siehst du Schaden, Kopfschuss und Magazin deiner Waffe, beim Aufheben auch den Vergleich.</li>
+        </ul>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -124,6 +194,7 @@
 
 <script src="lib/three.min.js"></script>
 <script src="js/util.js"></script>
+<script src="js/terrain.js"></script>
 <script src="js/physics.js"></script>
 <script src="js/effects.js"></script>
 <script src="js/items.js"></script>

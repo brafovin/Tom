@@ -2,7 +2,7 @@
 // ============================================================
 //  Die Welt: Boden, Straßen, Stadt, Ampeln, Mülltonnen, Natur
 // ============================================================
-const MAP_HALF = 180;
+const MAP_HALF = 300;
 const CITY_HALF = 75;
 const ROADS = [-68, -22, 22, 68];   // Straßenmitten (x und z)
 const ROAD_W = 10;
@@ -45,15 +45,29 @@ const TrafficLights = {
 };
 
 const NatureMeshes = [];
+// Landstraßen aus der Stadt hinaus: axis 'x' = verläuft entlang x bei z = c
+const OUTER_ROADS = [
+  { axis: 'x', c: 22, a: CITY_HALF, b: MAP_HALF + 10 },
+  { axis: 'x', c: 22, a: -MAP_HALF - 10, b: -CITY_HALF },
+  { axis: 'z', c: -22, a: CITY_HALF, b: MAP_HALF + 10 },
+  { axis: 'z', c: -22, a: -MAP_HALF - 10, b: -CITY_HALF },
+];
+const BRIDGES = [];
+
+function onRoad(x, z, margin = 0) {
+  for (const r of OUTER_ROADS) {
+    const along = r.axis === 'x' ? x : z, across = r.axis === 'x' ? z : x;
+    if (along > r.a - margin && along < r.b + margin && Math.abs(across - r.c) < ROAD_W / 2 + margin) return true;
+  }
+  return false;
+}
 
 function buildWorld(scene) {
   rand = mulberry32(20241013);
   TrafficLights.init();
 
-  // ---- Boden ----
-  const ground = new THREE.Mesh(boxesGeo([[900, 1, 900, 0, -0.5, 0]], 0.25), mat('grass'));
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // ---- Boden mit Seen und Fluss ----
+  buildTerrain(scene);
 
   // ---- Stadt-Untergrund (Gehwege / Plätze) ----
   const side = new THREE.Mesh(boxesGeo([[CITY_HALF * 2, 0.04, CITY_HALF * 2, 0, 0.0, 0]], 0.5), mat('sidewalk'));
@@ -86,6 +100,24 @@ function buildWorld(scene) {
     if (b > a) zSegs.push([a, b]);
   }
   for (const c of ROADS) for (const [a, b] of zSegs) roadBoxes.push([ROAD_W, 0.06, b - a, c, 0.02, (a + b) / 2]);
+  // Landstraßen (am Fluss unterbrochen, dort steht eine Brücke)
+  BRIDGES.length = 0;
+  const roadBridge = makeBridge(scene, 22, ROAD_W + 1);
+  BRIDGES.push(roadBridge);
+  const outerMarks = [];
+  for (const r of OUTER_ROADS) {
+    let segs = [[r.a, r.b]];
+    if (r.axis === 'x' && r.c === roadBridge.z && r.b > roadBridge.x0) segs = [[r.a, roadBridge.x0 + 0.5], [roadBridge.x1 - 0.5, r.b]];
+    for (const [a, b] of segs) {
+      if (r.axis === 'x') roadBoxes.push([b - a, 0.06, ROAD_W, (a + b) / 2, 0.02, r.c]);
+      else roadBoxes.push([ROAD_W, 0.06, b - a, r.c, 0.02, (a + b) / 2]);
+      for (let v = a + 3; v < b - 2; v += 6) {
+        if (r.axis === 'x') outerMarks.push([2.6, 0.02, 0.18, v, 0.06, r.c]);
+        else outerMarks.push([0.18, 0.02, 2.6, r.c, 0.06, v]);
+      }
+    }
+  }
+  for (const z of [-150, 205]) BRIDGES.push(makeBridge(scene, z, 4));
   const roads = new THREE.Mesh(boxesGeo(roadBoxes, 0.3), mat('asphalt'));
   roads.receiveShadow = true;
   scene.add(roads);
@@ -108,7 +140,7 @@ function buildWorld(scene) {
       }
     }
   }
-  const markMesh = new THREE.Mesh(boxesGeo(marks), colMat('#f4f4f0'));
+  const markMesh = new THREE.Mesh(boxesGeo(marks.concat(outerMarks)), colMat('#f4f4f0'));
   scene.add(markMesh);
 
   // ---- 10 Gebäude ----
@@ -174,12 +206,19 @@ function buildWorld(scene) {
                     [22 + 3.2, 40, -Math.PI / 2], [-60, -22 + 3.2, 0], [68 + 3.2, 5, Math.PI / 2], [50, -22 - 3.2, Math.PI]];
   for (const [x, z, r] of carSpots) makeCar(scene, x, z, r);
 
+  // ---- Die Insel im Inselsee: kleine Hütte mit besonderer Kiste ----
+  const isle = LAKES.find(l => l.island);
+  const hut = makeBuilding(scene, isle.x - 4, isle.z - 4, 2, 2, 1, { style: S.wood, roof: 'gable', door: 's', chests: 0, furniture: false, roofMat: mat('roof', '#3f6e8c') });
+  Chests.spawn(isle.x, 0.12, isle.z - 1.5, 0, true);
+  makePier(scene, isle.x, isle.z + isle.r + 3, isle.z + isle.r - 16, 2.6);
+  makePier(scene, isle.x, isle.z + 7.5, isle.z + 14, 2.6);
+
   // ---- Natur: Bäume & Steine (instanziert für gute Leistung) ----
   buildNature(scene, blocks, B.concat([church]));
 
   // ---- Kisten draußen + Boden-Loot ----
   let placed = 0, guard = 0;
-  while (placed < 14 && guard++ < 500) {
+  while (placed < 34 && guard++ < 1500) {
     const x = rnd(-MAP_HALF + 15, MAP_HALF - 15), z = rnd(-MAP_HALF + 15, MAP_HALF - 15);
     if (Math.abs(x) < CITY_HALF + 4 && Math.abs(z) < CITY_HALF + 4) continue;
     if (spotBlocked(x, z, 1.2)) continue;
@@ -191,7 +230,7 @@ function buildWorld(scene) {
     if (!spotBlocked(x, z, 0.8)) Chests.spawn(x, 0, z, rndi(0, 3) * Math.PI / 2);
   }
   placed = 0; guard = 0;
-  while (placed < 30 && guard++ < 800) {
+  while (placed < 60 && guard++ < 2000) {
     const x = rnd(-MAP_HALF + 10, MAP_HALF - 10), z = rnd(-MAP_HALF + 10, MAP_HALF - 10);
     if (spotBlocked(x, z, 0.8)) continue;
     const loot = rollFloorLoot();
@@ -199,25 +238,21 @@ function buildWorld(scene) {
     placed++;
   }
 
-  // ---- Wolken ----
-  const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
-  const cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c9d6e3' });
-  for (let i = 0; i < 40; i++) {
-    const c = new THREE.Group();
+  // ---- Wolken (alle in einem Mesh) ----
+  const cloudBoxes = [];
+  for (let i = 0; i < 70; i++) {
+    const cx = rnd(-750, 750), cy = rnd(110, 160), cz = rnd(-750, 750);
     const n = rndi(3, 6);
-    for (let k = 0; k < n; k++) {
-      const m = new THREE.Mesh(cloudGeo, cloudMat);
-      m.scale.set(rnd(10, 22), rnd(3, 6), rnd(8, 16));
-      m.position.set(rnd(-12, 12), rnd(-1, 2), rnd(-8, 8));
-      c.add(m);
-    }
-    c.position.set(rnd(-400, 400), rnd(110, 150), rnd(-400, 400));
-    scene.add(c);
+    for (let k = 0; k < n; k++) cloudBoxes.push([rnd(10, 24), rnd(3, 6), rnd(8, 18), cx + rnd(-12, 12), cy + rnd(-1, 2), cz + rnd(-8, 8)]);
   }
-  return { buildings: B, church, blocks };
+  scene.add(new THREE.Mesh(boxesGeo(cloudBoxes), new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c9d6e3' })));
+  return { buildings: B, church, blocks, hut };
 }
 
 function spotBlocked(x, z, r) {
+  if (terrainH(x, z) < -0.05 || terrainH(x + r, z) < -0.05 || terrainH(x - r, z) < -0.05 ||
+      terrainH(x, z + r) < -0.05 || terrainH(x, z - r) < -0.05) return true;
+  if (onRoad(x, z, r)) return true;
   Phys.query(x - r, z - r, x + r, z + r, _q);
   for (const c of _q) {
     if (c.minX < x + r && c.maxX > x - r && c.minZ < z + r && c.maxZ > z - r) return true;
@@ -331,7 +366,7 @@ function buildNature(scene, blocks, buildings) {
   };
   const trees = [];
   // Wäldchen außerhalb der Stadt
-  for (let k = 0; k < 14; k++) {
+  for (let k = 0; k < 34; k++) {
     let cx, cz;
     do { cx = rnd(-MAP_HALF + 20, MAP_HALF - 20); cz = rnd(-MAP_HALF + 20, MAP_HALF - 20); }
     while (Math.abs(cx) < CITY_HALF + 15 && Math.abs(cz) < CITY_HALF + 15);
@@ -343,10 +378,22 @@ function buildNature(scene, blocks, buildings) {
     }
   }
   // verstreute Bäume
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 260; i++) {
     const x = rnd(-MAP_HALF, MAP_HALF), z = rnd(-MAP_HALF, MAP_HALF);
     if (Math.abs(x) < CITY_HALF + 3 && Math.abs(z) < CITY_HALF + 3) continue;
     if (tryAdd(x, z, 0.8)) trees.push({ x, z, type: rand() < 0.5 ? 'pine' : 'leafy', s: rnd(0.8, 1.3) });
+  }
+  // Bäume am Seeufer und auf der Insel
+  for (const L of LAKES) {
+    for (let i = 0; i < 14; i++) {
+      const a = rnd(0, Math.PI * 2), d = L.r + rnd(5, 12);
+      const x = L.x + Math.cos(a) * d, z = L.z + Math.sin(a) * d;
+      if (tryAdd(x, z, 0.8)) trees.push({ x, z, type: 'leafy', s: rnd(0.8, 1.2) });
+    }
+    if (L.island) for (const a of [0.6, 2.4, 3.9, 5.4]) {
+      const x = L.x + Math.cos(a) * 7.2, z = L.z + Math.sin(a) * 7.2;
+      if (tryAdd(x, z, 0.6)) trees.push({ x, z, type: 'leafy', s: 0.75 });
+    }
   }
   // Bäume in der Stadt (auf den Grünflächen)
   for (const b of blocks) {
@@ -374,7 +421,7 @@ function buildNature(scene, blocks, buildings) {
 
   // Steine
   const rocks = [];
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 190; i++) {
     const x = rnd(-MAP_HALF, MAP_HALF), z = rnd(-MAP_HALF, MAP_HALF);
     if (Math.abs(x) < CITY_HALF + 3 && Math.abs(z) < CITY_HALF + 3) continue;
     const s = rnd(0.8, 2.2);
@@ -418,4 +465,17 @@ function instTrees(scene, list, geos, mats, hp, height) {
     crownC.noCollide = true;
     p.colliders.push(crownC);
   });
+}
+
+// Holzsteg entlang z (über Wasser), von z0 nach z1
+function makePier(scene, x, z0, z1, width) {
+  const a = Math.min(z0, z1), b = Math.max(z0, z1), len = b - a, cz = (a + b) / 2;
+  const top = 0.35;
+  const list = [[width, 0.2, len, x, top - 0.1, cz, '#8a5a2b']];
+  for (let k = a + 0.6; k < b; k += 0.9) list.push([width, 0.02, 0.1, x, top + 0.01, k, '#6e4524']);
+  for (let k = a + 1; k < b; k += 3) for (const s of [-1, 1]) list.push([0.25, 3.2, 0.25, x + s * (width / 2 - 0.2), top - 1.6, k, '#4a3420']);
+  const m = vcMesh(list);
+  m.receiveShadow = true;
+  scene.add(m);
+  addBox(x - width / 2, 0.1, a, x + width / 2, top, b);
 }

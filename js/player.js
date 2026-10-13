@@ -34,6 +34,13 @@ class Player {
     this.bobT = 0;
     this.lastDamageT = 99;
     this.buildPl = null;
+    // Schleichen, Rutschen, Klettern, Schwimmen
+    this.crouching = false;
+    this.slideT = 0; this.slideSpeed = 0; this.slideDir = new THREE.Vector3();
+    this.climbing = false; this.stamina = 1; this.mantleT = 0;
+    this.swimming = false;
+    this.eyeNow = this.eye;
+    this.roll = 0;
 
     // Ansicht in der Hand
     this.viewRoot = new THREE.Group();
@@ -53,7 +60,7 @@ class Player {
   get item() { return this.sel > 0 ? this.slots[this.sel - 1] : null; }
 
   spawn(x, z) {
-    this.pos.set(x, 110, z);
+    this.pos.set(x, 140, z);
     this.vel.set(0, 0, 0);
     this.gliding = true;
     this.yaw = Math.atan2(x, z); // Blick Richtung Mitte
@@ -210,7 +217,7 @@ class Player {
     }
     if (P.KeyQ) this.setBuild('wall');
     if (P.KeyX) this.setBuild('floor');
-    if (P.KeyC) this.setBuild('ramp');
+    if (P.KeyV) this.setBuild('ramp');
     if (P.KeyT) { this.buildMat = (this.buildMat + 1) % 3; UI.dirty = true; }
     if (P.KeyR) this.startReload();
     if (P.KeyG && this.sel > 0) this.dropItem(this.sel - 1);
@@ -226,24 +233,89 @@ class Player {
     if (Input.keys.KeyD) mx += 1;
     const len = Math.hypot(mx, mz) || 1;
     mx /= len; mz /= len;
-    const sprint = Input.keys.ShiftLeft || Input.keys.ShiftRight;
-    let speed = this.gliding ? 14 : (sprint && mz < 0 && !this.using ? 8.2 : 5.6);
-    if (this.using) speed *= 0.5;
-    if (this.aim > 0.5) speed *= 0.7;
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const wx = mx * cy + mz * sy, wz = -mx * sy + mz * cy;
-    const accel = this.onGround || this.gliding ? 14 : 4;
-    this.vel.x = lerp(this.vel.x, wx * speed, Math.min(1, accel * dt));
-    this.vel.z = lerp(this.vel.z, wz * speed, Math.min(1, accel * dt));
+    const sprint = (Input.keys.ShiftLeft || Input.keys.ShiftRight) && mz < 0 && !this.using && !this.crouching;
+    const crouchKey = Input.keys.KeyC;
+
+    // Rutschen: beim Sprinten C drücken
+    if (P.KeyC && sprint && this.onGround && this.slideT <= 0 && Math.hypot(this.vel.x, this.vel.z) > 6.5) {
+      this.slideT = 1.0; this.slideSpeed = 12.5;
+      this.slideDir.set(this.vel.x, 0, this.vel.z).normalize();
+      Sound.play('slide');
+    }
+    if (this.slideT > 0) {
+      this.slideT -= dt;
+      this.slideSpeed = Math.max(0, this.slideSpeed - 9 * dt);
+      // ein bisschen lenken
+      if (mx || mz) this.slideDir.lerp(new THREE.Vector3(wx, 0, wz), Math.min(1, dt * 1.5)).normalize();
+      if (this.slideSpeed < 3.5 || !this.onGround && this.vel.y > 0.5) this.slideT = 0;
+      if (this.onGround && Math.random() < 0.5) Effects.particle(this.pos.clone().add(new THREE.Vector3(mrnd(-0.3, 0.3), 0.1, mrnd(-0.3, 0.3))), '#bfb49a', new THREE.Vector3(mrnd(-1, 1), mrnd(0.5, 2), mrnd(-1, 1)), 0.4, 0.6);
+    }
+    const sliding = this.slideT > 0;
+
+    // Schleichen (C halten). Aufstehen nur, wenn über dem Kopf Platz ist
+    const wantCrouch = (crouchKey || sliding) && !this.gliding && !this.swimming;
+    if (wantCrouch) this.crouching = true;
+    else if (this.crouching && solidOverlaps(this.pos.x, this.pos.y + 0.1, this.pos.z, this.r * 0.9, 1.75, _hits).length === 0) this.crouching = false;
+    this.h = this.crouching ? 1.2 : 1.8;
+
+    let speed = this.gliding ? 14 : (sprint ? 8.2 : 5.6);
+    if (this.crouching) speed = 2.8;
+    if (this.swimming) speed = sprint ? 4.8 : 3.6;
+    if (this.using) speed *= 0.5;
+    if (this.aim > 0.5) speed *= 0.7;
+    const accel = this.onGround || this.gliding || this.swimming ? 14 : 4;
+    if (sliding && this.onGround) {
+      this.vel.x = this.slideDir.x * this.slideSpeed;
+      this.vel.z = this.slideDir.z * this.slideSpeed;
+    } else {
+      this.vel.x = lerp(this.vel.x, wx * speed, Math.min(1, accel * dt));
+      this.vel.z = lerp(this.vel.z, wz * speed, Math.min(1, accel * dt));
+    }
+
+    // Klettern: Leertaste halten und gegen eine Wand laufen
+    const fwd = this.forward();
+    const wallAhead = (y0, y1) => {
+      solidOverlaps(this.pos.x + fwd.x * 0.55, this.pos.y + y0, this.pos.z + fwd.z * 0.55, 0.22, y1 - y0, _hits);
+      return _hits.some(c => !(c.piece && c.piece.kind === 'tree'));
+    };
+    const wasClimbing = this.climbing;
+    this.climbing = false;
+    if (!this.gliding && !this.swimming && Input.keys.Space && mz < 0 && this.stamina > 0 && !this.crouching) {
+      if (wallAhead(0.5, 1.5)) {
+        this.climbing = true;
+        this.stamina = Math.max(0, this.stamina - dt / 3.2);
+        this.vel.x = fwd.x * 1.2; this.vel.z = fwd.z * 1.2;
+        this.vel.y = 4.2 + GRAVITY * dt;
+        if (Math.random() < 0.15) Sound.play('swing', this.pos);
+      } else if (wasClimbing && wallAhead(-0.2, 0.5)) {
+        // oben angekommen: hochziehen
+        this.mantleT = 0.35;
+      }
+    }
+    if (this.mantleT > 0) {
+      this.mantleT -= dt;
+      this.vel.y = Math.max(this.vel.y, 4.5 + GRAVITY * dt);
+      this.vel.x = fwd.x * 3; this.vel.z = fwd.z * 3;
+    }
+    if (this.onGround) this.stamina = Math.min(1, this.stamina + dt * 0.6);
+
     if (this.gliding) {
       this.vel.y = -11;
       moveBody(this, dt, 0);
       if (this.onGround) { this.gliding = false; UI.dirty = true; UI.toast('Gelandet! Such dir Waffen in Kisten.'); }
     } else {
-      if ((Input.keys.Space) && this.onGround) { this.vel.y = 7.6; this.onGround = false; }
+      if (Input.pressed.Space && this.onGround && !this.climbing) {
+        this.vel.y = this.crouching && !sliding ? 6.2 : 7.6;
+        this.onGround = false;
+        if (sliding) { this.slideT = 0; this.vel.x *= 1.1; this.vel.z *= 1.1; }   // Rutsch-Sprung behält den Schwung
+      }
       moveBody(this, dt);
     }
-    if (this.onGround && (mx || mz)) this.bobT += dt * (sprint ? 13 : 9);
+    if (this.swimming !== this.wasSwim) { this.wasSwim = this.swimming; UI.dirty = true; if (this.swimming) { this.buildMode = null; this.refreshHeld(); } }
+    if (this.onGround && (mx || mz) && !sliding) this.bobT += dt * (sprint ? 13 : this.crouching ? 6 : 9);
+    if (this.swimming && (mx || mz)) this.bobT += dt * 5;
 
     // Auto-Aufheben von Munition/Material
     for (let i = GroundItems.list.length - 1; i >= 0; i--) {
@@ -266,8 +338,8 @@ class Player {
       if (this.reloadT <= 0) this.finishReload();
     }
 
-    // Aktionen (nicht während des Gleitens)
-    if (this.gliding) { /* erst landen */ }
+    // Aktionen (nicht während des Gleitens/Schwimmens/Kletterns)
+    if (this.gliding || this.swimming || this.climbing) { if (this.using) this.using = null; }
     else if (this.buildMode) this.updateBuild(dt);
     else if (this.sel === 0) { if (Input.mouseL && this.swingT <= 0) this.swing(); }
     else {
@@ -281,8 +353,12 @@ class Player {
 
   updateCamera(dt) {
     const cam = this.camera;
-    cam.position.set(this.pos.x, this.pos.y + this.eye + (this.onGround ? Math.sin(this.bobT) * 0.04 : 0), this.pos.z);
-    cam.rotation.set(this.pitch + this.recoil, this.yaw, 0, 'YXZ');
+    const targetEye = this.slideT > 0 ? 0.85 : this.crouching ? 1.08 : this.eye;
+    this.eyeNow = lerp(this.eyeNow, targetEye, Math.min(1, dt * 12));
+    const bob = this.onGround ? Math.sin(this.bobT) * 0.04 : this.swimming ? Math.sin(this.bobT + Date.now() / 400) * 0.06 : 0;
+    cam.position.set(this.pos.x, this.pos.y + this.eyeNow + bob, this.pos.z);
+    this.roll = lerp(this.roll, this.slideT > 0 ? 0.07 : 0, Math.min(1, dt * 8));
+    cam.rotation.set(this.pitch + this.recoil, this.yaw, this.roll, 'YXZ');
     const it = this.item;
     const scope = it && it.kind === 'weapon' && WEAPONS[it.key].scope;
     const targetFov = lerp(Game.settings.fov || 75, scope ? 22 : 55, this.aim);
@@ -294,6 +370,9 @@ class Player {
     const p = hip.lerp(ads, this.aim);
     this.viewRoot.position.set(p.x + bx, p.y - by - this.recoil * 0.5, p.z + this.recoil * 0.8);
     this.viewRoot.visible = !(scope && this.aim > 0.8);
+    // beim Schwimmen/Klettern Waffe runternehmen
+    const lower = this.swimming || this.climbing ? 0.35 : 0;
+    this.viewRoot.position.y -= lower;
     // Spitzhacke schwingen
     const sw = Math.max(0, this.swingT) / 0.42;
     const k = Math.sin((1 - sw) * Math.PI);

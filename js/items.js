@@ -58,10 +58,11 @@ function makeHeal(key, count) {
 const WEAPON_TABLE = { pistol: 22, smg: 20, ar: 26, shotgun: 20, sniper: 8, rocket: 4 };
 const HEAL_TABLE = { bandage: 35, medkit: 15, shield: 20, minishield: 30 };
 
-function rollChestLoot() {
+function rollChestLoot(rare) {
   const out = [];
-  const key = weightedPick(WEAPON_TABLE);
-  out.push(makeWeapon(key, pickRarity([28, 32, 22, 12, 6])));
+  const key = weightedPick(rare ? { ar: 30, shotgun: 25, sniper: 25, rocket: 20 } : WEAPON_TABLE);
+  out.push(makeWeapon(key, pickRarity(rare ? [0, 0, 20, 45, 35] : [28, 32, 22, 12, 6])));
+  if (rare) out.push(makeHeal('shield'));
   out.push({ kind: 'ammo', ammo: WEAPONS[key].ammo, count: AMMO[WEAPONS[key].ammo].pack });
   if (Math.random() < 0.65) out.push(makeHeal(weightedPick(HEAL_TABLE)));
   if (Math.random() < 0.5) {
@@ -81,6 +82,26 @@ function rollFloorLoot() {
   if (r < 0.8) return [makeHeal(weightedPick(HEAL_TABLE))];
   const a = pick(Object.keys(AMMO).filter(k => k !== 'rockets'));
   return [{ kind: 'ammo', ammo: a, count: AMMO[a].pack }];
+}
+
+// Schaden pro Schuss (bei der Schrotflinte alle Kugeln zusammen)
+function weaponDamage(item) {
+  const w = WEAPONS[item.key];
+  return Math.round(w.dmg * RARITIES[item.rarity].dmg * (w.pellets || 1));
+}
+function weaponStats(item) {
+  const w = WEAPONS[item.key], r = RARITIES[item.rarity];
+  const per = Math.round(w.dmg * r.dmg);
+  return {
+    dmg: weaponDamage(item),
+    dmgText: w.pellets ? `${w.pellets}×${per}` : String(per),
+    head: Math.round(w.dmg * r.dmg * w.head * (w.pellets || 1)),
+    dps: Math.round(w.dmg * r.dmg * (w.pellets || 1) * w.rate),
+    rate: w.rate,
+    mag: w.mag,
+    reload: (w.reload * r.reload).toFixed(1),
+    range: w.range,
+  };
 }
 
 function itemName(item) {
@@ -205,7 +226,7 @@ const GroundItems = {
       g.add(beam);
     }
     g.position.copy(pos);
-    g.position.y = groundHeight(pos.x, pos.z, 0.2, pos.y + 1);
+    g.position.y = Math.max(groundHeight(pos.x, pos.z, 0.2, pos.y + 1), isWater(pos.x, pos.z) ? WATER_Y - 0.3 : -99);
     this.scene.add(g);
     const gi = { item, group: g, model, pos: g.position, t: Math.random() * 6, auto: item.kind === 'ammo' || item.kind === 'mats', delay: 0.6 };
     this.list.push(gi);
@@ -240,7 +261,7 @@ const Chests = {
 
   init(scene) { this.scene = scene; },
 
-  spawn(x, y, z, rotY = 0) {
+  spawn(x, y, z, rotY = 0, rare = false) {
     const g = new THREE.Group();
     const wood = '#8a5a2b', gold = '#f2c14e';
     g.add(vcMesh([[1.0, 0.5, 0.6, 0, 0.25, 0, wood], [1.04, 0.08, 0.64, 0, 0.05, 0, gold],
@@ -251,13 +272,14 @@ const Chests = {
       [0.14, 0.14, 0.05, 0, 0.02, 0.62, gold]], 'chestLid'));
     g.add(lid);
     const glow = new THREE.Mesh(cachedGeo('chestglow', () => new THREE.BoxGeometry(1.3, 1.0, 0.9)),
-      colMat('#ffd54a', { transparent: true, opacity: 0.18, depthWrite: false }));
+      colMat(rare ? '#c77dff' : '#ffd54a', { transparent: true, opacity: 0.18, depthWrite: false }));
     glow.position.y = 0.45;
     g.add(glow);
     g.position.set(x, y, z);
     g.rotation.y = rotY;
     this.scene.add(g);
-    const ch = { group: g, lid, glow, pos: g.position, opened: false, t: Math.random() * 5 };
+    const ch = { group: g, lid, glow, pos: g.position, opened: false, t: Math.random() * 5, rare };
+    if (rare) glow.scale.set(1.25, 1.4, 1.35);
     const r = Math.abs(Math.sin(rotY)) > 0.5;
     ch.col = r ? addBoxC(x, y + 0.36, z, 0.6, 0.72, 1.0) : addBoxC(x, y + 0.36, z, 1.0, 0.72, 0.6);
     ch.col.noRay = true;
@@ -271,7 +293,7 @@ const Chests = {
     ch.lid.rotation.x = -1.9;
     ch.group.remove(ch.glow);
     Sound.play('chest', ch.pos);
-    const loot = rollChestLoot();
+    const loot = rollChestLoot(ch.rare);
     if (opener && opener.isBot) return loot;
     const fwd = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), ch.group.rotation.y);
     loot.forEach((it, i) => {

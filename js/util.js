@@ -53,6 +53,15 @@ function initTextures() {
     g.fillStyle = '#5b9a3c'; g.fillRect(0, 0, s, s);
     speckle(g, s, ['#4f8a33', '#68a845', '#579436', '#73b04f', '#4a7f2f'], 3000, 3);
   });
+  TEX.detail = canvasTex(256, (g, s) => {
+    g.fillStyle = '#c9c9c9'; g.fillRect(0, 0, s, s);
+    speckle(g, s, ['#b8b8b8', '#d8d8d8', '#bfbfbf', '#e2e2e2', '#adadad'], 3500, 3);
+    g.strokeStyle = 'rgba(90,90,90,0.18)'; g.lineWidth = 1;
+    for (let i = 0; i < 160; i++) {
+      const x = Math.random() * s, y = Math.random() * s;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.random() * 3 - 1.5, y - 3 - Math.random() * 4); g.stroke();
+    }
+  });
   TEX.dirt = canvasTex(256, (g, s) => {
     g.fillStyle = '#8a6d48'; g.fillRect(0, 0, s, s);
     speckle(g, s, ['#7a5f3d', '#9a7c55', '#6f5535'], 2500, 3);
@@ -310,6 +319,8 @@ const Sound = {
       case 'heal': this.tone(440, 0.3, 0.15, 'sine', 440); break;
       case 'shield': this.tone(660, 0.3, 0.15, 'sine', 660); break;
       case 'empty': this.tone(1200, 0.03, 0.15, 'square'); break;
+      case 'splash': this.burst(0.5, 900, 0.6, 0.7 * v); this.burst(0.3, 2500, 1, 0.3 * v, 'highpass', 0.05); break;
+      case 'slide': this.burst(0.5, 700, 0.8, 0.35 * v, 'bandpass'); break;
       case 'zone': this.tone(110, 1.2, 0.3, 'sawtooth', 50); break;
       case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.4, 0.2, 'triangle', 0, i * 0.12)); break;
       case 'lose': [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.4, 0.2, 'triangle', 0, i * 0.15)); break;

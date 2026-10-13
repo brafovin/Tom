@@ -3,17 +3,19 @@
 //  Der Sturm (Zone): wird nach und nach kleiner, draußen gibt's Schaden
 // ============================================================
 const ZONE_PHASES = [
-  { wait: 60, shrink: 45, r: 115, dps: 1 },
-  { wait: 45, shrink: 35, r: 70, dps: 2 },
+  { wait: 60, shrink: 50, r: 210, dps: 1 },
+  { wait: 50, shrink: 40, r: 125, dps: 1 },
+  { wait: 40, shrink: 35, r: 70, dps: 2 },
   { wait: 35, shrink: 30, r: 38, dps: 5 },
   { wait: 30, shrink: 25, r: 16, dps: 8 },
   { wait: 20, shrink: 25, r: 0, dps: 12 },
 ];
+const ZONE_START_R = 440;
 
 const Zone = {
-  cur: { x: 0, z: 0, r: 270 },
-  from: { x: 0, z: 0, r: 270 },
-  next: { x: 0, z: 0, r: 115 },
+  cur: { x: 0, z: 0, r: ZONE_START_R },
+  from: { x: 0, z: 0, r: ZONE_START_R },
+  next: { x: 0, z: 0, r: 210 },
   phase: 0,
   state: 'wait',
   timer: 0,
@@ -22,7 +24,7 @@ const Zone = {
   mesh: null,
 
   init(scene) {
-    this.cur = { x: 0, z: 0, r: 270 };
+    this.cur = { x: 0, z: 0, r: ZONE_START_R };
     this.from = { ...this.cur };
     this.phase = 0; this.state = 'wait'; this.timer = ZONE_PHASES[0].wait; this.dps = 1; this.tickT = 0;
     this.pickNext();
@@ -58,13 +60,13 @@ const Zone = {
 
   pickNext() {
     const p = ZONE_PHASES[this.phase];
-    const maxOff = Math.max(0, Math.min(this.cur.r, 160) - p.r) * 0.85;
+    const maxOff = Math.max(0, Math.min(this.cur.r, 260) - p.r) * 0.85;
     const a = Math.random() * Math.PI * 2, d = Math.random() * maxOff;
     let x = this.cur.x + Math.cos(a) * d, z = this.cur.z + Math.sin(a) * d;
     // nicht zu weit an den Rand
     const lim = Math.max(0, MAP_HALF - p.r - 10);
     x = clamp(x, -lim, lim); z = clamp(z, -lim, lim);
-    if (this.phase === 0) { x = clamp(x, -40, 40); z = clamp(z, -40, 40); }
+    if (this.phase === 0) { x = clamp(x, -60, 60); z = clamp(z, -60, 60); }
     this.next = { x, z, r: p.r };
   },
 
