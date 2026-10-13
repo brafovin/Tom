@@ -1,0 +1,440 @@
+'use strict';
+// ============================================================
+//  Der Spieler: Bewegung, Inventar, Schießen, Abbauen, Bauen
+// ============================================================
+const MAX_MATS = 999;
+const Input = { keys: {}, mouseL: false, mouseR: false, dx: 0, dy: 0, wheel: 0, pressed: {} };
+
+class Player {
+  constructor(camera, scene) {
+    this.camera = camera;
+    this.scene = scene;
+    this.isPlayer = true;
+    this.name = 'Du';
+    this.pos = new THREE.Vector3();
+    this.vel = new THREE.Vector3();
+    this.r = 0.35; this.h = 1.8; this.eye = 1.62;
+    this.yaw = 0; this.pitch = 0;
+    this.hp = 100; this.shield = 0;
+    this.alive = true;
+    this.onGround = false;
+    this.gliding = true;
+    this.kills = 0;
+    this.mats = { wood: 0, stone: 0, metal: 0 };
+    this.ammo = { light: 0, medium: 0, heavy: 0, shells: 0, rockets: 0 };
+    this.slots = [null, null, null, null, null, null];
+    this.sel = 0;            // 0 = Spitzhacke, 1-6 = Slots
+    this.buildMode = null;   // 'wall' | 'floor' | 'ramp'
+    this.buildMat = 0;
+    this.fireT = 0; this.reloadT = 0; this.reloading = false;
+    this.swingT = 0; this.buildT = 0;
+    this.using = null;       // laufende Heilung
+    this.bloom = 0; this.recoil = 0;
+    this.aim = 0;
+    this.bobT = 0;
+    this.lastDamageT = 99;
+    this.buildPl = null;
+
+    // Ansicht in der Hand
+    this.viewRoot = new THREE.Group();
+    camera.add(this.viewRoot);
+    this.pickaxe = pickaxeModel();
+    this.pickaxe.scale.setScalar(0.45);
+    this.viewRoot.add(this.pickaxe);
+    this.heldModel = null;
+    this.flash = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25),
+      new THREE.MeshBasicMaterial({ color: '#ffd36b', transparent: true, opacity: 0.9, depthWrite: false }));
+    this.flash.visible = false;
+    camera.add(this.flash);
+    this.flashT = 0;
+    this.refreshHeld();
+  }
+
+  get item() { return this.sel > 0 ? this.slots[this.sel - 1] : null; }
+
+  spawn(x, z) {
+    this.pos.set(x, 110, z);
+    this.vel.set(0, 0, 0);
+    this.gliding = true;
+    this.yaw = Math.atan2(x, z); // Blick Richtung Mitte
+  }
+
+  refreshHeld() {
+    if (this.heldModel) { this.viewRoot.remove(this.heldModel); this.heldModel = null; }
+    const it = this.item;
+    this.pickaxe.visible = !it && !this.buildMode;
+    if (it && !this.buildMode) {
+      this.heldModel = it.kind === 'weapon' ? weaponModel(it.key, it.rarity) : healModel(it.key);
+      this.heldModel.scale.setScalar(0.85);
+      this.viewRoot.add(this.heldModel);
+    }
+    this.reloading = false;
+    this.using = null;
+    Builds.hideGhost();
+    UI.dirty = true;
+  }
+
+  select(i) {
+    if (i === this.sel && !this.buildMode) return;
+    this.sel = i;
+    this.buildMode = null;
+    this.fireT = Math.max(this.fireT, 0.15);
+    this.refreshHeld();
+  }
+
+  setBuild(type) {
+    this.buildMode = this.buildMode === type ? null : type;
+    this.using = null;
+    this.refreshHeld();
+  }
+
+  // ---------- Schaden ----------
+  takeDamage(dmg, from, head) {
+    if (!this.alive) return false;
+    if (this.gliding && this.pos.y > 20) return false;
+    let rest = dmg;
+    if (this.shield > 0 && from !== 'zone') {
+      const s = Math.min(this.shield, rest);
+      this.shield -= s; rest -= s;
+    }
+    this.hp -= rest;
+    this.lastDamageT = 0;
+    UI.damageFlash(from);
+    Sound.play('hurt');
+    if (this.using) { this.using = null; UI.dirty = true; }
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.alive = false;
+      Game.onDeath(this, from);
+      return true;
+    }
+    UI.dirty = true;
+    return false;
+  }
+
+  // ---------- Inventar ----------
+  addItem(it) {
+    if (it.kind === 'ammo') { this.ammo[it.ammo] = Math.min(999, this.ammo[it.ammo] + it.count); UI.toast('+' + it.count + ' ' + AMMO[it.ammo].name); return true; }
+    if (it.kind === 'mats') { this.mats[it.mat] = Math.min(MAX_MATS, this.mats[it.mat] + it.count); UI.toast('+' + it.count + ' ' + MAT_INFO[it.mat].name); return true; }
+    if (it.kind === 'heal') {
+      for (const s of this.slots) {
+        if (s && s.kind === 'heal' && s.key === it.key && s.count < HEALS[it.key].stack) {
+          const add = Math.min(it.count, HEALS[it.key].stack - s.count);
+          s.count += add; it.count -= add;
+          if (it.count <= 0) { UI.dirty = true; return true; }
+        }
+      }
+    }
+    const free = this.slots.indexOf(null);
+    if (free >= 0) {
+      this.slots[free] = it;
+      if (this.sel === 0 && it.kind === 'weapon' && !this.buildMode && !this.slots.some((s, i) => s && i !== free && s.kind === 'weapon')) this.select(free + 1);
+      UI.dirty = true;
+      return true;
+    }
+    return false;
+  }
+
+  dropItem(slotIdx, pos) {
+    const it = this.slots[slotIdx];
+    if (!it) return;
+    this.slots[slotIdx] = null;
+    GroundItems.spawn(it, pos || this.pos.clone().add(this.forward().multiplyScalar(1.2)));
+    if (slotIdx + 1 === this.sel) this.refreshHeld();
+    UI.dirty = true;
+  }
+
+  forward() { return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)); }
+  lookDir() {
+    return new THREE.Vector3(-Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+  }
+  eyePos() { return new THREE.Vector3(this.pos.x, this.pos.y + this.eye, this.pos.z); }
+
+  // Was liegt vor mir zum Aufheben/Öffnen?
+  findInteract() {
+    const eye = this.eyePos(), look = this.lookDir();
+    let best = null, bestScore = Infinity;
+    const consider = (pos, obj, type) => {
+      const to = pos.clone().sub(eye);
+      const dist = to.length();
+      if (dist > 3.6) return;
+      to.normalize();
+      const dot = to.dot(look);
+      if (dot < 0.55 && dist > 1.6) return;
+      const score = dist * (2 - dot);
+      if (score < bestScore) { bestScore = score; best = { type, obj }; }
+    };
+    for (const ch of Chests.list) if (!ch.opened) consider(ch.pos.clone().setY(ch.pos.y + 0.4), ch, 'chest');
+    for (const gi of GroundItems.list) if (!gi.auto) consider(gi.pos.clone().setY(gi.pos.y + 0.5), gi, 'item');
+    return best;
+  }
+
+  interact(target) {
+    if (!target) return;
+    if (target.type === 'chest') { Chests.open(target.obj, this); return; }
+    const gi = target.obj;
+    const it = gi.item;
+    if (this.addItem(it)) {
+      GroundItems.remove(gi);
+      Sound.play('pickup');
+    } else {
+      // Inventar voll: mit aktuellem Slot tauschen
+      const idx = this.sel > 0 ? this.sel - 1 : 0;
+      const old = this.slots[idx];
+      this.slots[idx] = it;
+      GroundItems.remove(gi);
+      if (old) GroundItems.spawn(old, gi.pos.clone());
+      Sound.play('pickup');
+      if (this.sel === 0) this.sel = idx + 1;
+      this.refreshHeld();
+    }
+  }
+
+  // ---------- Update ----------
+  update(dt) {
+    if (!this.alive) return;
+    this.lastDamageT += dt;
+    // Umsehen
+    const sens = 0.0022 * (Game.settings.sens || 1) * (this.aim > 0.5 && this.item && WEAPONS[this.item.key] && WEAPONS[this.item.key].scope ? 0.35 : (this.aim > 0.5 ? 0.7 : 1));
+    this.yaw -= Input.dx * sens;
+    this.pitch = clamp(this.pitch - Input.dy * sens, -1.5, 1.5);
+    Input.dx = 0; Input.dy = 0;
+
+    // Tasten (einmalig gedrückt)
+    const P = Input.pressed;
+    for (let i = 1; i <= 7; i++) if (P['Digit' + i]) this.select(i - 1);
+    if (Input.wheel) {
+      const n = ((this.sel + Math.sign(Input.wheel)) % 7 + 7) % 7;
+      this.select(n);
+      Input.wheel = 0;
+    }
+    if (P.KeyQ) this.setBuild('wall');
+    if (P.KeyX) this.setBuild('floor');
+    if (P.KeyC) this.setBuild('ramp');
+    if (P.KeyT) { this.buildMat = (this.buildMat + 1) % 3; UI.dirty = true; }
+    if (P.KeyR) this.startReload();
+    if (P.KeyG && this.sel > 0) this.dropItem(this.sel - 1);
+    const target = this.gliding ? null : this.findInteract();
+    UI.setPrompt(target);
+    if (P.KeyE) this.interact(target);
+
+    // Bewegung
+    let mx = 0, mz = 0;
+    if (Input.keys.KeyW) mz -= 1;
+    if (Input.keys.KeyS) mz += 1;
+    if (Input.keys.KeyA) mx -= 1;
+    if (Input.keys.KeyD) mx += 1;
+    const len = Math.hypot(mx, mz) || 1;
+    mx /= len; mz /= len;
+    const sprint = Input.keys.ShiftLeft || Input.keys.ShiftRight;
+    let speed = this.gliding ? 14 : (sprint && mz < 0 && !this.using ? 8.2 : 5.6);
+    if (this.using) speed *= 0.5;
+    if (this.aim > 0.5) speed *= 0.7;
+    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    const wx = mx * cy + mz * sy, wz = -mx * sy + mz * cy;
+    const accel = this.onGround || this.gliding ? 14 : 4;
+    this.vel.x = lerp(this.vel.x, wx * speed, Math.min(1, accel * dt));
+    this.vel.z = lerp(this.vel.z, wz * speed, Math.min(1, accel * dt));
+    if (this.gliding) {
+      this.vel.y = -11;
+      moveBody(this, dt, 0);
+      if (this.onGround) { this.gliding = false; UI.dirty = true; UI.toast('Gelandet! Such dir Waffen in Kisten.'); }
+    } else {
+      if ((Input.keys.Space) && this.onGround) { this.vel.y = 7.6; this.onGround = false; }
+      moveBody(this, dt);
+    }
+    if (this.onGround && (mx || mz)) this.bobT += dt * (sprint ? 13 : 9);
+
+    // Auto-Aufheben von Munition/Material
+    for (let i = GroundItems.list.length - 1; i >= 0; i--) {
+      const gi = GroundItems.list[i];
+      if (!gi.auto || gi.delay > 0) continue;
+      if (gi.pos.distanceToSquared(this.pos) < 5.0) { this.addItem(gi.item); GroundItems.remove(gi); Sound.play('pickup'); }
+    }
+
+    // Zielen
+    const wantAim = Input.mouseR && !this.buildMode && this.item && this.item.kind === 'weapon';
+    this.aim = lerp(this.aim, wantAim ? 1 : 0, Math.min(1, dt * 12));
+
+    this.fireT -= dt; this.swingT -= dt; this.buildT -= dt;
+    this.bloom = Math.max(0, this.bloom - dt * 0.12);
+    this.recoil = Math.max(0, this.recoil - dt * 0.5);
+
+    // Nachladen
+    if (this.reloading) {
+      this.reloadT -= dt;
+      if (this.reloadT <= 0) this.finishReload();
+    }
+
+    // Aktionen (nicht während des Gleitens)
+    if (this.gliding) { /* erst landen */ }
+    else if (this.buildMode) this.updateBuild(dt);
+    else if (this.sel === 0) { if (Input.mouseL && this.swingT <= 0) this.swing(); }
+    else {
+      const it = this.item;
+      if (it && it.kind === 'weapon') this.updateWeapon(it);
+      else if (it && it.kind === 'heal') this.updateHeal(it, dt);
+    }
+
+    this.updateCamera(dt);
+  }
+
+  updateCamera(dt) {
+    const cam = this.camera;
+    cam.position.set(this.pos.x, this.pos.y + this.eye + (this.onGround ? Math.sin(this.bobT) * 0.04 : 0), this.pos.z);
+    cam.rotation.set(this.pitch + this.recoil, this.yaw, 0, 'YXZ');
+    const it = this.item;
+    const scope = it && it.kind === 'weapon' && WEAPONS[it.key].scope;
+    const targetFov = lerp(Game.settings.fov || 75, scope ? 22 : 55, this.aim);
+    if (Math.abs(cam.fov - targetFov) > 0.05) { cam.fov = targetFov; cam.updateProjectionMatrix(); }
+    UI.setScope(scope && this.aim > 0.8);
+    // Ansichtsmodell
+    const bx = Math.sin(this.bobT * 0.5) * 0.012, by = Math.abs(Math.cos(this.bobT * 0.5)) * 0.012;
+    const hip = new THREE.Vector3(0.28, -0.26, -0.52), ads = new THREE.Vector3(0, -0.13, -0.42);
+    const p = hip.lerp(ads, this.aim);
+    this.viewRoot.position.set(p.x + bx, p.y - by - this.recoil * 0.5, p.z + this.recoil * 0.8);
+    this.viewRoot.visible = !(scope && this.aim > 0.8);
+    // Spitzhacke schwingen
+    const sw = Math.max(0, this.swingT) / 0.42;
+    const k = Math.sin((1 - sw) * Math.PI);
+    this.pickaxe.position.set(0.12, -0.12 + k * 0.06, 0.04 - k * 0.12);
+    this.pickaxe.rotation.set(-0.35 - k * 1.5, 0.35, 0.55 + k * 0.2);
+    if (this.heldModel && this.item && this.item.kind === 'heal') {
+      this.heldModel.position.set(-0.05, 0.05 + (this.using ? Math.sin(Date.now() / 120) * 0.03 : 0), 0);
+    }
+    if (this.reloading && this.heldModel) this.heldModel.rotation.x = -0.5;
+    else if (this.heldModel) this.heldModel.rotation.x = 0;
+    this.flashT -= dt;
+    this.flash.visible = this.flashT > 0;
+    Sound.listener.copy(cam.position);
+  }
+
+  // ---------- Waffen ----------
+  updateWeapon(it) {
+    const w = WEAPONS[it.key];
+    if (!Input.mouseL) this.triggerHeld = false;
+    if (!Input.mouseL || this.fireT > 0 || this.reloading) return;
+    if (!w.auto && this.triggerHeld) return;
+    this.triggerHeld = true;
+    if (it.mag <= 0) {
+      if (this.ammo[w.ammo] > 0) this.startReload(); else { Sound.play('empty'); this.fireT = 0.3; UI.toast('Keine Munition!'); }
+      return;
+    }
+    it.mag--;
+    this.fireT = 1 / w.rate;
+    const eye = this.eyePos();
+    const dir = this.lookDir();
+    const moving = Math.hypot(this.vel.x, this.vel.z) > 1;
+    let spreadMul = (1 + this.bloom * 40) * (this.aim > 0.5 ? 0.45 : 1) * (moving ? 1.5 : 1) * (this.onGround ? 1 : 2);
+    if (w.scope && this.aim < 0.8) spreadMul = 12;
+    if (it.key === 'shotgun') spreadMul = this.aim > 0.5 ? 0.8 : 1;
+    const muzzle = this.camera.localToWorld(new THREE.Vector3(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z - 0.6));
+    const res = Combat.fire(this, it, eye, dir, spreadMul, muzzle);
+    this.bloom = Math.min(0.06, this.bloom + w.bloom);
+    this.recoil += w.kick;
+    this.flash.position.set(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z - (it.key === 'pistol' ? 0.25 : 0.75));
+    this.flash.rotation.z = Math.random() * 3;
+    this.flashT = 0.05;
+    if (res.hits) { UI.hitMarker(res.head, res.kill); Sound.play(res.head ? 'headshot' : 'hit'); }
+    UI.dirty = true;
+    if (it.mag <= 0 && this.ammo[w.ammo] > 0) setTimeout(() => { if (this.item === it && !this.reloading) this.startReload(); }, 200);
+  }
+
+  startReload() {
+    const it = this.item;
+    if (!it || it.kind !== 'weapon' || this.reloading) return;
+    const w = WEAPONS[it.key];
+    if (it.mag >= w.mag || this.ammo[w.ammo] <= 0) return;
+    this.reloading = true;
+    this.reloadT = w.reload * RARITIES[it.rarity].reload;
+    this.reloadMax = this.reloadT;
+    Sound.play('reload');
+    UI.dirty = true;
+  }
+
+  finishReload() {
+    this.reloading = false;
+    const it = this.item;
+    if (!it || it.kind !== 'weapon') return;
+    const w = WEAPONS[it.key];
+    const need = w.mag - it.mag;
+    const take = Math.min(need, this.ammo[w.ammo]);
+    it.mag += take; this.ammo[w.ammo] -= take;
+    UI.dirty = true;
+  }
+
+  // ---------- Spitzhacke ----------
+  swing() {
+    this.swingT = 0.42;
+    Sound.play('swing');
+    const eye = this.eyePos(), dir = this.lookDir();
+    const eh = rayEntities(eye, dir, 2.6, this);
+    const wh = raycastWorld(eye, dir, 3.2);
+    if (eh && (!wh || eh.t < wh.t)) {
+      const killed = eh.ent.takeDamage(20, this, false);
+      Effects.dmgNumber(eye.clone().addScaledVector(dir, eh.t), 20, '#ffffff');
+      UI.hitMarker(false, killed);
+      Sound.play('hit');
+      return;
+    }
+    if (wh && wh.collider && wh.collider.piece) {
+      const piece = wh.collider.piece;
+      Sound.play('pickaxe', wh.point);
+      Effects.sparks(wh.point, MAT_INFO[piece.mat].color, 6, wh.normal);
+      const base = piece.kind === 'tree' ? 8 : piece.kind === 'rock' ? 7 : piece.kind === 'build' ? 3 : 6;
+      const gain = Math.round(base * piece.yieldMul);
+      this.mats[piece.mat] = Math.min(MAX_MATS, this.mats[piece.mat] + gain);
+      Effects.dmgNumber(wh.point, gain, MAT_INFO[piece.mat].color);
+      damagePiece(piece, 50, wh.point);
+      UI.pieceHit(piece);
+      UI.matGain(piece.mat);
+      UI.dirty = true;
+    } else if (wh) {
+      Sound.play('pickaxe', wh.point);
+      Effects.sparks(wh.point, '#9c8a6a', 3, wh.normal);
+    }
+  }
+
+  // ---------- Heilen ----------
+  updateHeal(it, dt) {
+    const h = HEALS[it.key];
+    if (!this.using) {
+      if (!Input.mouseL) return;
+      if (h.hp && this.hp >= h.maxHp) { if (!this.warned) UI.toast('Du kannst damit nicht mehr heilen.'); this.warned = true; return; }
+      if (h.shield && this.shield >= h.maxShield) { if (!this.warned) UI.toast('Schild ist schon voll genug.'); this.warned = true; return; }
+      this.warned = false;
+      this.using = { item: it, t: 0, max: h.time };
+      Sound.play(h.hp ? 'heal' : 'shield');
+    }
+    this.using.t += dt;
+    if (this.using.t >= this.using.max) {
+      if (h.hp) this.hp = Math.min(h.maxHp, this.hp + h.hp);
+      if (h.shield) this.shield = Math.min(h.maxShield, this.shield + h.shield);
+      it.count--;
+      if (it.count <= 0) { this.slots[this.sel - 1] = null; this.refreshHeld(); }
+      this.using = null;
+      Sound.play(h.hp ? 'heal' : 'shield');
+    }
+    UI.dirty = true;
+  }
+
+  // ---------- Bauen ----------
+  updateBuild(dt) {
+    const matName = BUILD_MATS[this.buildMat];
+    const pl = Builds.placement(this.buildMode, this.pos, this.yaw, this.pitch);
+    const ok = Builds.canPlace(pl, this.mats, matName);
+    Builds.showGhost(pl, ok);
+    if (Input.mouseL && this.buildT <= 0) {
+      if (ok) {
+        Builds.place(pl, matName, this);
+        this.mats[matName] -= BUILD_COST;
+        this.buildT = 0.12;
+        UI.dirty = true;
+      } else if (this.mats[matName] < BUILD_COST && !this.matWarn) {
+        UI.toast('Nicht genug ' + MAT_INFO[matName].name + '! Bau Sachen mit der Spitzhacke ab.');
+        this.matWarn = true;
+        setTimeout(() => (this.matWarn = false), 1500);
+      }
+    }
+  }
+}

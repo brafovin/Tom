@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sturmstadt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ================= HUD ================= -->
+<div id="hud" hidden>
+  <div id="killfeed"></div>
+
+  <div id="topCenter">
+    <div id="zoneBox"><svg viewBox="0 0 24 24" class="ico"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 4a6 6 0 1 1-6 6 6 6 0 0 1 6-6z" fill="#c79bff"/></svg><span id="zoneText">Sturm kommt in</span><b id="zoneTime">1:00</b></div>
+    <div id="stats">
+      <span title="Spieler übrig"><svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="7" r="4" fill="#fff"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8z" fill="#fff"/></svg><b id="alive">16</b></span>
+      <span title="Eliminierungen"><svg viewBox="0 0 24 24" class="ico"><path d="M12 2C7 2 3 5.8 3 10.5c0 2.9 1.5 5.4 4 6.9V21h3v-2h4v2h3v-3.6c2.5-1.5 4-4 4-6.9C21 5.8 17 2 12 2zM8.5 13A1.8 1.8 0 1 1 10 11.2 1.8 1.8 0 0 1 8.5 13zm7 0a1.8 1.8 0 1 1 1.5-1.8 1.8 1.8 0 0 1-1.5 1.8z" fill="#fff"/></svg><b id="kills">0</b></span>
+    </div>
+    <div id="announce"></div>
+  </div>
+
+  <canvas id="minimap" width="400" height="400"></canvas>
+
+  <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="hitmarker"></div>
+  <div id="pieceBar" hidden><div id="pieceFill"></div></div>
+  <div id="prompt" hidden></div>
+  <div id="useBar" hidden><div id="useFill"></div><span id="useText"></span></div>
+  <div id="glideHint" hidden>Du gleitest! Steuere mit <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> und lande irgendwo.</div>
+  <div id="toast"></div>
+
+  <!-- Leben links unten -->
+  <div id="healthBox">
+    <div class="bar shield"><svg viewBox="0 0 24 24" class="ico"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z" fill="#38bdf8"/></svg><div class="track"><div id="shFill"></div></div><b id="shNum">0</b></div>
+    <div class="bar hp"><svg viewBox="0 0 24 24" class="ico"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="#4ade50"/></svg><div class="track"><div id="hpFill"></div></div><b id="hpNum">100</b></div>
+  </div>
+
+  <!-- Inventar rechts unten -->
+  <div id="invBox">
+    <div id="itemInfo"><span id="itemName">Spitzhacke</span><span id="ammo"></span></div>
+    <div id="mats"></div>
+    <div id="slots"></div>
+  </div>
+
+  <div id="buildBar">
+    <div data-b="wall"><kbd>Q</kbd>Wand</div>
+    <div data-b="floor"><kbd>X</kbd>Boden</div>
+    <div data-b="ramp"><kbd>C</kbd>Rampe</div>
+    <div class="hint"><kbd>T</kbd>Material</div>
+  </div>
+
+  <div id="scope" hidden></div>
+  <div id="stormOverlay"></div>
+  <div id="damageOverlay"></div>
+  <div id="dmgLayer"></div>
+</div>
+
+<!-- ================= Menü ================= -->
+<div id="menu">
+  <div class="menuCard">
+    <div class="brand">
+      <h1>Sturm<span>stadt</span></h1>
+      <p class="tag">Lande in der Stadt, plündere Kisten, bau dich in Sicherheit und sei der Letzte, der steht, bevor der Sturm alles schluckt.</p>
+    </div>
+    <div class="menuGrid">
+      <section>
+        <h2>Gegner</h2>
+        <div class="seg">
+          <button data-diff="leicht">Leicht<small>12 Bots</small></button>
+          <button data-diff="normal" class="on">Normal<small>15 Bots</small></button>
+          <button data-diff="schwer">Schwer<small>19 Bots</small></button>
+        </div>
+        <h2>Einstellungen</h2>
+        <label class="opt"><input type="checkbox" id="optShadows" checked> Schatten (aus = schneller)</label>
+        <label class="opt">Maus-Empfindlichkeit <input type="range" id="optSens" min="0.3" max="2.5" step="0.1" value="1"></label>
+        <button id="playBtn">Spielen</button>
+        <p class="note">Du brauchst Maus und Tastatur. Klick ins Bild, um die Maus zu fangen; <kbd>Esc</kbd> gibt sie wieder frei.</p>
+        <p id="menuError" hidden></p>
+      </section>
+      <section class="controls">
+        <h2>Steuerung</h2>
+        <dl>
+          <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Laufen</dd>
+          <dt><kbd>Shift</kbd></dt><dd>Sprinten</dd>
+          <dt><kbd>Leertaste</kbd></dt><dd>Springen</dd>
+          <dt>Maus</dt><dd>Umsehen</dd>
+          <dt>Linksklick</dt><dd>Schießen · Abbauen · Bauen · Heilen</dd>
+          <dt>Rechtsklick</dt><dd>Zielen</dd>
+          <dt><kbd>1</kbd></dt><dd>Spitzhacke</dd>
+          <dt><kbd>2</kbd>–<kbd>7</kbd> · Mausrad</dt><dd>Inventar-Platz wählen</dd>
+          <dt><kbd>E</kbd></dt><dd>Kiste öffnen · aufheben</dd>
+          <dt><kbd>R</kbd></dt><dd>Nachladen</dd>
+          <dt><kbd>Q</kbd> <kbd>X</kbd> <kbd>C</kbd></dt><dd>Wand · Boden · Rampe bauen</dd>
+          <dt><kbd>T</kbd></dt><dd>Holz · Stein · Metall wechseln</dd>
+          <dt><kbd>G</kbd></dt><dd>Gegenstand fallen lassen</dd>
+          <dt><kbd>M</kbd></dt><dd>Große Karte</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="pause" hidden>
+  <div class="menuCard small">
+    <h1>Pause</h1>
+    <p>Klick irgendwo, um weiterzuspielen.</p>
+  </div>
+</div>
+
+<div id="endScreen" hidden>
+  <div class="menuCard small">
+    <div id="endPlace">#1</div>
+    <h1 id="endTitle">SIEG!</h1>
+    <p id="endSub"></p>
+    <p class="endStat">Eliminierungen: <b id="endKills">0</b></p>
+    <button id="againBtn">Nochmal spielen</button>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="js/util.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/items.js"></script>
+<script src="js/buildings.js"></script>
+<script src="js/world.js"></script>
+<script src="js/build.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/player.js"></script>
+<script src="js/bots.js"></script>
+<script src="js/zone.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
