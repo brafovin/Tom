@@ -8,7 +8,7 @@ const _eb = { t: 0, nx: 0, ny: 0, nz: 0 };
 function rayEntities(o, d, maxDist, ignore) {
   let best = maxDist, hit = null, head = false;
   for (const e of Entities) {
-    if (!e.alive || e === ignore) continue;
+    if (!e.alive || e === ignore || e.inBus) continue;
     const p = e.pos;
     // grobe Vorprüfung
     const dx = p.x - o.x, dz = p.z - o.z;
@@ -101,7 +101,7 @@ const Combat = {
     Effects.explosion(pos, radius);
     Sound.play('explosion', pos);
     for (const e of Entities) {
-      if (!e.alive || e === shooter) continue;   // eigene Raketen tun dir nichts
+      if (!e.alive || e === shooter || e.inBus) continue;   // eigene Raketen tun dir nichts
       const c = e.pos.clone(); c.y += 1;
       const dist = c.distanceTo(pos);
       if (dist < radius) {

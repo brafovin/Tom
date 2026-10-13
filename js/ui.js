@@ -57,6 +57,14 @@ const UI = {
         g.setLineDash([]);
       }
     }
+    // Busroute
+    if (Bus.boarding) {
+      g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2; g.setLineDash([8, 6]);
+      g.beginPath(); g.moveTo(X(Bus.start.x), Z(Bus.start.z)); g.lineTo(X(Bus.end.x), Z(Bus.end.z)); g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = '#2f6fd6'; g.strokeStyle = '#fff';
+      g.beginPath(); g.arc(X(Bus.pos.x), Z(Bus.pos.z), 7, 0, 7); g.fill(); g.stroke();
+    }
     // eigene Bauten
     g.fillStyle = '#7fd3ff';
     for (const p of Builds.occupied.values()) g.fillRect(X(p.center.x) - 1, Z(p.center.z) - 1, 2, 2);
@@ -130,7 +138,6 @@ const UI = {
       const e = document.querySelector(`#buildBar [data-b="${k}"]`);
       if (e) e.classList.toggle('on', player.buildMode === k);
     }
-    this.el.glide.hidden = !player.gliding;
   },
 
   update(dt, player) {
@@ -139,9 +146,13 @@ const UI = {
     this.el.hpNum.textContent = Math.ceil(player.hp);
     this.el.shFill.style.width = player.shield + '%';
     this.el.shNum.textContent = Math.ceil(player.shield);
-    const zl = Zone.label();
+    const zl = Bus.boarding ? { text: 'Bus über der Karte', time: '0:' + String(Math.ceil(Bus.timeLeft())).padStart(2, '0') } : Zone.label();
     this.el.zoneText.textContent = zl.text;
     this.el.zoneTime.textContent = zl.time;
+    // Hinweis für Bus, freien Fall und Gleiter
+    const gh = !player.alive ? '' : player.inBus ? 'Im Bus · <kbd>Leertaste</kbd> abspringen'
+      : player.gliding ? (player.freefall ? 'Freier Fall · <kbd>Leertaste</kbd> Gleiter öffnen' : 'Gleiter offen · lenken mit <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>') : '';
+    if (gh !== this.lastGh) { this.lastGh = gh; this.el.glide.hidden = !gh; this.el.glide.innerHTML = gh; }
     this.el.alive.textContent = Game.aliveCount();
     this.el.kills.textContent = player.kills;
     // Heilbalken
@@ -330,7 +341,7 @@ function drawMapBase(S, info, labels) {
   g.fillStyle = 'rgba(120,120,120,0.9)';
   for (const p of Pieces) if (p.kind === 'rock') g.fillRect(X(p.center.x) - 1, Z(p.center.z) - 1, 2.5, 2.5);
   if (labels) {
-    g.fillStyle = '#c77dff'; g.strokeStyle = '#2a1050'; g.lineWidth = 2;
+    g.fillStyle = '#4aa3ff'; g.strokeStyle = '#0b2a5c'; g.lineWidth = 2;
     g.beginPath(); g.arc(X(isle.x), Z(isle.z), 6, 0, 7); g.fill(); g.stroke();
     g.font = `800 ${Math.round(S / 30)}px Nunito, sans-serif`; g.textAlign = 'center';
     const label = (t, x, z) => { g.lineWidth = 4; g.strokeStyle = 'rgba(0,0,0,0.65)'; g.strokeText(t, X(x), Z(z)); g.fillStyle = '#fff'; g.fillText(t, X(x), Z(z)); };

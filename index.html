@@ -75,7 +75,7 @@
       <ul class="facts">
         <li><b>600 m</b><span>große Karte</span></li>
         <li><b>3</b><span>Seen &amp; ein Fluss</span></li>
-        <li><b>1</b><span>Insel mit Schatz</span></li>
+        <li><b>1–2</b><span>blaue Kisten</span></li>
         <li><b>6</b><span>Waffen</span></li>
       </ul>
 
@@ -92,7 +92,7 @@
         <label class="opt">Maus-Empfindlichkeit <input type="range" id="optSens" min="0.3" max="2.5" step="0.1" value="1"></label>
       </div>
 
-      <button id="playBtn"><span>Spielen</span><small>mit dem Gleiter abspringen</small></button>
+      <button id="playBtn"><span>Spielen</span><small>in den Kampfbus einsteigen</small></button>
       <p class="note">Du brauchst Maus und Tastatur. Klick ins Bild, um die Maus zu fangen; <kbd>Esc</kbd> gibt sie wieder frei.</p>
       <p id="menuError" hidden></p>
     </section>
@@ -156,19 +156,20 @@
           <li><i style="background:#f2efe6"></i>Kirche</li>
           <li><i style="background:#3d8fd1"></i>Seen &amp; Fluss</li>
           <li><i style="background:#8a5a2b"></i>Brücken &amp; Stege</li>
-          <li><i style="background:#c77dff"></i>Insel-Schatz</li>
+          <li><i style="background:#4aa3ff"></i>Blaue Kiste (Insel)</li>
         </ul>
       </div>
 
       <div class="tabPanel" data-panel="news" hidden>
         <ul class="news">
-          <li><b>Größere Karte</b>600 × 600 Meter mit Landstraßen aus der Stadt hinaus.</li>
-          <li><b>Seen und ein Fluss</b>Drei Seen, ein Fluss mit Brücken und Stegen. Im Wasser kann man schwimmen, aber nicht schießen.</li>
-          <li><b>Die Insel</b>Mitten im Inselsee steht eine Hütte mit einer lila Schatzkiste voller seltener Waffen.</li>
-          <li><b>Schleichen</b><kbd>C</kbd> halten: leise und langsam. Bots entdecken dich schwerer.</li>
-          <li><b>Rutschen</b>Beim Sprinten <kbd>C</kbd> drücken. Mit <kbd>Leertaste</kbd> springst du aus dem Rutschen weit nach vorn.</li>
-          <li><b>Klettern</b>Gegen eine Wand laufen und <kbd>Leertaste</kbd> halten. Der Balken unter dem Fadenkreuz zeigt deine Kraft.</li>
-          <li><b>Waffenschaden</b>Rechts unten siehst du Schaden, Kopfschuss und Magazin deiner Waffe, beim Aufheben auch den Vergleich.</li>
+          <li><b>Der Kampfbus</b>Alle starten in einem fliegenden Bus mit Ballon. Mit <kbd>Leertaste</kbd> springst du ab, erst im freien Fall, dann öffnet sich der Gleiter.</li>
+          <li><b>Blaue Kisten</b>1 bis 2 pro Runde, eine steht immer auf der Insel. Eine Lichtsäule zeigt, wo sie sind. Drin: legendäre Waffen, Schild, Medikit und Material.</li>
+          <li><b>Kisten überall</b>Auf der ganzen Karte stehen Kisten, jede Runde an anderen Stellen.</li>
+          <li><b>Kleine Häuser</b>16 Häuser verteilt im Land: Holzhütten, Bauernhäuser, Bungalows, Werkstätten und mehr, mit Briefkasten und Mülltonne.</li>
+          <li><b>Schlechte Waffen am Boden</b>Was einfach so herumliegt, ist grau oder grün. Gute Sachen gibt es nur in Kisten.</li>
+          <li><b>Echtere Waffen</b>Neue Modelle mit Lauf, Visier, Magazin und Schaft.</li>
+          <li><b>Todesanimation</b>Wer ausscheidet, kippt um und wird hochgebeamt.</li>
+          <li><b>Schwimmen, Schleichen, Rutschen, Klettern</b><kbd>C</kbd> halten, <kbd>Shift</kbd> + <kbd>C</kbd>, an Wänden <kbd>W</kbd> + <kbd>Leertaste</kbd>.</li>
         </ul>
       </div>
     </section>
@@ -205,6 +206,7 @@
 <script src="js/player.js"></script>
 <script src="js/bots.js"></script>
 <script src="js/zone.js"></script>
+<script src="js/bus.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/game.js"></script>
 </body>

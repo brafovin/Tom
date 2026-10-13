@@ -58,8 +58,72 @@ class Bot {
     const m = botModel();
     Object.assign(this, { model: m.g, legL: m.legL, legR: m.legR, armL: m.armL, armR: m.armR });
     this.held = null;
+    this.model.rotation.order = 'YXZ';
     this.scene.add(this.model);
     this.refreshWeapon();
+    // Gleiter (nur beim Runterfliegen sichtbar)
+    this.glider = gliderModel(pick(['#ff6b35', '#ffd43b', '#4ade80', '#38bdf8', '#c77dff', '#ff4d6d']));
+    this.glider.position.y = 2.7;
+    this.glider.visible = false;
+    this.model.add(this.glider);
+    this.inBus = false; this.gliding = false; this.freefall = false;
+    this.dying = false; this.deathT = 0;
+  }
+
+  onJump() {
+    this.model.visible = true;
+    // Landeziel: eine Kiste in der Nähe oder irgendwo in der Gegend
+    const cands = Chests.list.filter(c => !c.opened && c.pos.y < 1 && c.pos.distanceTo(this.pos.clone().setY(0)) < 140);
+    if (cands.length && Math.random() < 0.7) this.glideTarget = pick(cands).pos.clone();
+    else this.glideTarget = new THREE.Vector3(this.pos.x + mrnd(-80, 80), 0, this.pos.z + mrnd(-80, 80));
+    this.glideTarget.x = clamp(this.glideTarget.x, -MAP_HALF + 5, MAP_HALF - 5);
+    this.glideTarget.z = clamp(this.glideTarget.z, -MAP_HALF + 5, MAP_HALF - 5);
+  }
+
+  updateGlide(dt) {
+    const above = this.pos.y - groundHeight(this.pos.x, this.pos.z, this.r, this.pos.y);
+    if (this.freefall && above < 40 + (this.name.length % 4) * 5) this.freefall = false;
+    const tx = this.glideTarget.x - this.pos.x, tz = this.glideTarget.z - this.pos.z, d = Math.hypot(tx, tz);
+    const hs = this.freefall ? 17 : 12;
+    this.vel.x = d > 2 ? tx / d * hs : 0;
+    this.vel.z = d > 2 ? tz / d * hs : 0;
+    this.vel.y = this.freefall ? -30 : -10;
+    moveBody(this, dt, 0);
+    if (d > 2) this.yaw = Math.atan2(-tx, -tz);
+    this.model.position.copy(this.pos);
+    this.model.rotation.y = this.yaw;
+    this.model.rotation.x = this.freefall ? -1.25 : 0;   // im freien Fall liegt man flach in der Luft
+    this.glider.visible = !this.freefall;
+    this.armL.rotation.set(this.freefall ? 0 : -2.9, 0, this.freefall ? -1.2 : 0);
+    this.armR.rotation.set(this.freefall ? 0 : -2.9, 0, this.freefall ? 1.2 : 0);
+    if (this.onGround || this.swimming) {
+      this.gliding = false; this.freefall = false;
+      this.glider.visible = false; this.model.rotation.x = 0;
+      this.armL.rotation.set(0, 0, 0); this.armR.rotation.set(0, 0, 0);
+      this.goal = null;
+    }
+  }
+
+  // Todesanimation: umkippen, kurz liegen, dann hochgebeamt werden
+  updateDeath(dt) {
+    this.deathT += dt;
+    const t = this.deathT;
+    const fall = Math.min(1, t / 0.55);
+    this.model.rotation.x = (fall * fall) * (Math.PI / 2 - 0.08);
+    this.model.position.y = this.pos.y + fall * 0.15;
+    this.armL.rotation.x = -fall * 2.4; this.armR.rotation.x = -fall * 2.2;
+    this.legL.rotation.x = fall * 0.3; this.legR.rotation.x = -fall * 0.2;
+    if (t > 1.3 && !this.beamed) {
+      this.beamed = true;
+      Effects.beam(this.pos.clone());
+      Sound.play('beam', this.pos);
+    }
+    if (t > 1.3) {
+      const k = Math.max(0, 1 - (t - 1.3) / 0.5);
+      this.model.scale.set(k, 1 + (1 - k) * 2, k);
+      this.model.position.y = this.pos.y + (1 - k) * 3;
+    }
+    if (t > 1.8) { this.scene.remove(this.model); this.dying = false; }
   }
 
   get dmgMul() { return Game.diff.dmg; }
@@ -78,7 +142,8 @@ class Bot {
   eye() { return new THREE.Vector3(this.pos.x, this.pos.y + 1.65, this.pos.z); }
 
   takeDamage(dmg, from, head) {
-    if (!this.alive) return false;
+    if (!this.alive || this.inBus) return false;
+    if (this.gliding && this.pos.y > 25) return false;
     let rest = dmg;
     if (this.shield > 0 && from !== 'zone') { const s = Math.min(this.shield, rest); this.shield -= s; rest -= s; }
     this.hp -= rest;
@@ -106,8 +171,10 @@ class Bot {
   die(from) {
     this.alive = false;
     this.hp = 0;
-    Effects.debris(this.pos.clone().setY(this.pos.y + 1), '#5ecbff', 20);
-    this.scene.remove(this.model);
+    this.dying = true; this.deathT = 0;
+    if (this.held) this.held.visible = false;
+    this.glider.visible = false;
+    Effects.sparks(this.pos.clone().setY(this.pos.y + 1.2), '#ff4d4d', 10);
     // Beute fallen lassen
     const p = this.pos.clone();
     if (this.weapon) {
@@ -158,7 +225,7 @@ class Bot {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     for (const e of Entities) {
       if (e === this || !e.alive) continue;
-      if (e.isPlayer && e.gliding && e.pos.y > 25) continue;
+      if (e.inBus || (e.gliding && e.pos.y > 25)) continue;
       const d2 = e.pos.distanceToSquared(this.pos);
       if (d2 > bd) continue;
       const to = e.pos.clone().sub(this.pos).setY(0).normalize();
@@ -213,7 +280,10 @@ class Bot {
   }
 
   update(dt) {
+    if (this.dying) { this.updateDeath(dt); return; }
     if (!this.alive) return;
+    if (this.inBus) { this.model.visible = false; return; }
+    if (this.gliding) { this.updateGlide(dt); return; }
     this.thinkT -= dt; this.fireT -= dt; this.reactT -= dt; this.memoryT -= dt;
     this.buildCD -= dt; this.calmT += dt; this.goalT -= dt; this.strafeT -= dt; this.meleeT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.22 + Math.random() * 0.15; this.think(); }

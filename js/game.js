@@ -80,6 +80,8 @@ const Game = {
     Chests.init(scene); GroundItems.init(scene); Builds.init(scene); Combat.init(scene);
     this.info = buildWorld(scene);
     Zone.init(scene);
+    Bus.active = false;
+    Bus.build(scene);
     this.renderer.shadowMap.enabled = this.settings.shadows;
 
     // Spieler
@@ -103,26 +105,26 @@ const Game = {
     this.used = true;
     const p = this.player;
     p.alive = true;
+    p.pitch = -0.25;
     Entities.push(p);
-    const a = Math.random() * Math.PI * 2;
-    p.spawn(Math.cos(a) * 150, Math.sin(a) * 150);
-    // Bots verteilen
+    // Bots einsteigen lassen
     this.bots = [];
     const names = BOT_NAMES.slice().sort(() => Math.random() - 0.5);
-    let guard = 0;
-    while (this.bots.length < this.diff.bots && guard++ < 2000) {
-      const x = mrnd(-MAP_HALF + 10, MAP_HALF - 10), z = mrnd(-MAP_HALF + 10, MAP_HALF - 10);
-      if (spotBlocked(x, z, 1.2)) continue;
-      if (this.bots.some(b => b.pos.distanceTo(new THREE.Vector3(x, 0, z)) < 25)) continue;
-      const b = new Bot(this.scene, names[this.bots.length % names.length], x, z);
+    for (let i = 0; i < this.diff.bots; i++) {
+      const b = new Bot(this.scene, names[i % names.length], 0, 0);
       this.bots.push(b);
       Entities.push(b);
     }
+    // Alle in den Bus!
+    this.deathT = undefined;
+    Bus.launch(Entities);
+    p.yaw = Math.atan2(-Bus.dir.x, -Bus.dir.z) + Math.PI * 0.6;
+    this.canvas.classList.remove('dead');
     this.state = 'playing';
     $('menu').hidden = true; $('endScreen').hidden = true; $('pause').hidden = true;
     $('hud').hidden = false;
     UI.dirty = true;
-    UI.announce('Gleite runter und lande irgendwo!');
+    UI.announce('Alle in den Bus! Leertaste = abspringen');
     this.lock();
   },
 
@@ -149,6 +151,16 @@ const Game = {
     }
     if (ent.isPlayer) {
       Sound.play('lose');
+      // Todesanimation: Kamera kippt um, Bild wird grau, Sachen fallen auf den Boden
+      this.deathT = 0;
+      this.canvas.classList.add('dead');
+      Builds.hideGhost();
+      ent.slots.forEach((it, i) => {
+        if (!it) return;
+        const a = i / 6 * Math.PI * 2;
+        GroundItems.spawn(it, ent.pos.clone().add(new THREE.Vector3(Math.cos(a) * 1.2, 0.3, Math.sin(a) * 1.2)));
+        ent.slots[i] = null;
+      });
       const place = this.aliveCount() + 1;
       this.endGame(false, place, from);
     } else if (this.player.alive && this.aliveCount() === 1) {
@@ -158,6 +170,17 @@ const Game = {
   },
 
   feedMsg(html) { UI.killFeed(html); },
+
+  // Kamera fällt um, wenn man ausgeschieden ist
+  updateDeathCam(dt) {
+    if (this.deathT === undefined) return;
+    this.deathT += dt;
+    const p = this.player, k = Math.min(1, this.deathT / 0.9), e = 1 - Math.pow(1 - k, 3);
+    p.viewRoot.visible = false;
+    const cam = this.camera;
+    cam.position.set(p.pos.x, p.pos.y + lerp(p.eyeNow, 0.35, e), p.pos.z);
+    cam.rotation.set(lerp(p.pitch, 0.15, e), p.yaw + e * 0.4, e * 1.25, 'YXZ');
+  },
 
   endGame(win, place, from) {
     this.state = 'over';
@@ -171,7 +194,7 @@ const Game = {
         (from === 'zone' ? 'Der Sturm hat dich erwischt.' : (from && from.name ? `${from.name} hat dich erwischt.` : ''));
       $('endKills').textContent = this.player.kills;
       $('endScreen').hidden = false;
-    }, win ? 600 : 1400);
+    }, win ? 600 : 2400);
   },
 
   // ---------- Eingaben ----------
@@ -262,10 +285,12 @@ const Game = {
     this.last = now;
     const p = this.player;
     if (this.state === 'playing' || this.state === 'over') {
+      Bus.update(dt);
       if (this.state === 'playing') p.update(dt);
       for (const b of this.bots) b.update(dt);
       Combat.update(dt);
-      Zone.update(dt);
+      if (!Bus.boarding) Zone.update(dt);   // der Sturm startet erst, wenn der Bus weg ist
+      if (!p.alive) this.updateDeathCam(dt);
     }
     if (this.state === 'menu') {
       this.menuT += dt * 0.05;
@@ -278,6 +303,8 @@ const Game = {
     GroundItems.update(dt);
     updatePieceShake(dt);
     Effects.update(dt, this.camera);
+    this.cullT = (this.cullT || 0) - dt;
+    if (this.cullT <= 0) { this.cullT = 0.25; cullFar(this.camera.position); }
     if (this.state !== 'menu') UI.update(dt, p);
     Input.pressed = {};
     // Sonne folgt der Kamera (für Schatten)

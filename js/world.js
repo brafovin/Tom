@@ -209,33 +209,39 @@ function buildWorld(scene) {
   // ---- Die Insel im Inselsee: kleine Hütte mit besonderer Kiste ----
   const isle = LAKES.find(l => l.island);
   const hut = makeBuilding(scene, isle.x - 4, isle.z - 4, 2, 2, 1, { style: S.wood, roof: 'gable', door: 's', chests: 0, furniture: false, roofMat: mat('roof', '#3f6e8c') });
-  Chests.spawn(isle.x, 0.12, isle.z - 1.5, 0, true);
+  Chests.spawn(isle.x, 0.12, isle.z - 1.5, 0, true);   // blaue Kiste: immer auf der Insel
   makePier(scene, isle.x, isle.z + isle.r + 3, isle.z + isle.r - 16, 2.6);
   makePier(scene, isle.x, isle.z + 7.5, isle.z + 14, 2.6);
+
+  // ---- Kleine Häuser überall auf der Karte ----
+  const houses = placeSmallHouses(scene, S);
 
   // ---- Natur: Bäume & Steine (instanziert für gute Leistung) ----
   buildNature(scene, blocks, B.concat([church]));
 
-  // ---- Kisten draußen + Boden-Loot ----
-  let placed = 0, guard = 0;
-  while (placed < 34 && guard++ < 1500) {
-    const x = rnd(-MAP_HALF + 15, MAP_HALF - 15), z = rnd(-MAP_HALF + 15, MAP_HALF - 15);
-    if (Math.abs(x) < CITY_HALF + 4 && Math.abs(z) < CITY_HALF + 4) continue;
-    if (spotBlocked(x, z, 1.2)) continue;
-    Chests.spawn(x, 0, z, rnd(0, Math.PI * 2));
-    placed++;
+  // ---- Kisten überall auf der Karte (jede Runde andere) ----
+  // Die möglichen Plätze sind immer gleich (Zufall mit Seed), ob dort eine Kiste steht, entscheidet jede Runde neu.
+  const cell = 46, lo = -MAP_HALF + 12, hi = MAP_HALF - 12;
+  for (let cx = lo; cx < hi; cx += cell) for (let cz = lo; cz < hi; cz += cell) {
+    let spot = null;
+    for (let k = 0; k < 6 && !spot; k++) {
+      const x = cx + rnd(0, cell), z = cz + rnd(0, cell);
+      if (Math.abs(x) < CITY_HALF + 4 && Math.abs(z) < CITY_HALF + 4) continue;
+      if (!spotBlocked(x, z, 1.2)) spot = [x, z, rnd(0, Math.PI * 2)];
+    }
+    if (spot && Math.random() < 0.6) Chests.spawn(spot[0], 0, spot[1], spot[2]);
   }
   // ein paar Kisten auf den Straßen der Stadt
   for (const [x, z] of [[-45, 22 + 7], [45, -22 - 7], [-22 - 7, 45], [22 + 7, -45], [0, 68 - 7]]) {
-    if (!spotBlocked(x, z, 0.8)) Chests.spawn(x, 0, z, rndi(0, 3) * Math.PI / 2);
+    if (!spotBlocked(x, z, 0.8) && Math.random() < 0.8) Chests.spawn(x, 0, z, rndi(0, 3) * Math.PI / 2);
   }
-  placed = 0; guard = 0;
-  while (placed < 60 && guard++ < 2000) {
-    const x = rnd(-MAP_HALF + 10, MAP_HALF - 10), z = rnd(-MAP_HALF + 10, MAP_HALF - 10);
-    if (spotBlocked(x, z, 0.8)) continue;
+  // Boden-Beute: nur schlechte Waffen, Verbände, Munition – überall verteilt
+  const lcell = 40;
+  for (let cx = -MAP_HALF + 8; cx < MAP_HALF - 8; cx += lcell) for (let cz = -MAP_HALF + 8; cz < MAP_HALF - 8; cz += lcell) {
+    const x = cx + rnd(0, lcell), z = cz + rnd(0, lcell);
+    if (spotBlocked(x, z, 0.8) || Math.random() > 0.55) continue;
     const loot = rollFloorLoot();
     loot.forEach((it, i) => GroundItems.spawn(it, new THREE.Vector3(x + i * 0.9, 0, z)));
-    placed++;
   }
 
   // ---- Wolken (alle in einem Mesh) ----
@@ -246,7 +252,7 @@ function buildWorld(scene) {
     for (let k = 0; k < n; k++) cloudBoxes.push([rnd(10, 24), rnd(3, 6), rnd(8, 18), cx + rnd(-12, 12), cy + rnd(-1, 2), cz + rnd(-8, 8)]);
   }
   scene.add(new THREE.Mesh(boxesGeo(cloudBoxes), new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#c9d6e3' })));
-  return { buildings: B, church, blocks, hut };
+  return { buildings: B, church, blocks, hut, houses };
 }
 
 function spotBlocked(x, z, r) {
@@ -478,4 +484,91 @@ function makePier(scene, x, z0, z1, width) {
   m.receiveShadow = true;
   scene.add(m);
   addBox(x - width / 2, 0.1, a, x + width / 2, top, b);
+}
+
+// ---------- Kleine Häuser ----------
+const HOUSE_TYPES = [
+  { name: 'Holzhütte', tw: 2, td: 2, floors: 1, roof: 'gable', style: 'wood', roofC: '#6b4a2f' },
+  { name: 'Bauernhaus', tw: 3, td: 2, floors: 2, roof: 'gable', style: 'plaster', roofC: '#a34a2e' },
+  { name: 'Bungalow', tw: 3, td: 3, floors: 1, roof: 'flat', style: 'mint' },
+  { name: 'Schuppen', tw: 1, td: 1, floors: 1, roof: 'gable', style: 'wood', roofC: '#555b61' },
+  { name: 'Ferienhaus', tw: 2, td: 3, floors: 2, roof: 'gable', style: 'rose', roofC: '#7a3b2a' },
+  { name: 'Werkstatt', tw: 3, td: 2, floors: 1, roof: 'flat', style: 'metal', shop: true },
+  { name: 'Blaues Haus', tw: 2, td: 2, floors: 2, roof: 'gable', style: 'blue', roofC: '#3b4552' },
+  { name: 'Backsteinhaus', tw: 3, td: 2, floors: 2, roof: 'flat', style: 'brick' },
+];
+
+function areaFree(x0, z0, w, d, m) {
+  for (let x = x0 - m; x <= x0 + w + m; x += 2) for (let z = z0 - m; z <= z0 + d + m; z += 2) {
+    if (spotBlocked(x, z, 0.6)) return false;
+  }
+  return true;
+}
+
+function placeSmallHouses(scene, S) {
+  const houses = [];
+  let guard = 0;
+  while (houses.length < 16 && guard++ < 600) {
+    const type = HOUSE_TYPES[houses.length % HOUSE_TYPES.length];
+    const w = type.tw * T, d = type.td * T;
+    const x0 = Math.round(rnd(-MAP_HALF + 15, MAP_HALF - 15 - w)), z0 = Math.round(rnd(-MAP_HALF + 15, MAP_HALF - 15 - d));
+    if (x0 + w > -CITY_HALF - 12 && x0 < CITY_HALF + 12 && z0 + d > -CITY_HALF - 12 && z0 < CITY_HALF + 12) continue;
+    if (houses.some(h => Math.abs(h.x0 + h.w / 2 - (x0 + w / 2)) < 30 && Math.abs(h.z0 + h.d / 2 - (z0 + d / 2)) < 30)) continue;
+    if (!areaFree(x0, z0, w, d, 4)) continue;
+    const door = pick(['n', 's', 'e', 'w']);
+    const info = makeBuilding(scene, x0, z0, type.tw, type.td, type.floors, {
+      style: S[type.style], roof: type.roof, door, chests: 0, shop: type.shop,
+      roofMat: type.roofC ? mat('roof', type.roofC) : undefined,
+    });
+    info.name = type.name;
+    // Kistenplatz im Haus (hinterste Ecke, weg von der Treppe)
+    info.chestSpot = [x0 + T / 2, z0 + d - T / 2, rndi(0, 3) * Math.PI / 2];
+    // Briefkasten und Mülltonne vor der Tür
+    const doorIdx = Math.floor((door === 'n' || door === 's' ? type.tw : type.td) / 2);
+    let dx, dz, ox, oz;
+    if (door === 's') { dx = x0 + doorIdx * T + T / 2; dz = z0 + d; ox = 0; oz = 1; }
+    else if (door === 'n') { dx = x0 + doorIdx * T + T / 2; dz = z0; ox = 0; oz = -1; }
+    else if (door === 'e') { dx = x0 + w; dz = z0 + doorIdx * T + T / 2; ox = 1; oz = 0; }
+    else { dx = x0; dz = z0 + doorIdx * T + T / 2; ox = -1; oz = 0; }
+    makeMailbox(scene, dx + ox * 2.2 + oz * 2.2, dz + oz * 2.2 + ox * 2.2);
+    makeTrashCan(scene, dx + ox * 1.4 - oz * 2.4, dz + oz * 1.4 - ox * 2.4, Math.atan2(ox, oz), pick(BIN_COLORS));
+    houses.push(info);
+  }
+  // Kisten: jede Runde neu, manchmal steht in einem Haus die zweite blaue Kiste
+  const blueHouse = Math.random() < 0.5 ? houses[Math.floor(Math.random() * houses.length)] : null;
+  for (const h of houses) {
+    const [x, z, r] = h.chestSpot;
+    if (h === blueHouse) Chests.spawn(x, 0.12, z, r, true);
+    else if (Math.random() < 0.8) Chests.spawn(x, 0.12, z, r);
+  }
+  return houses;
+}
+
+function makeMailbox(scene, x, z) {
+  if (spotBlocked(x, z, 0.3)) return;
+  const g = new THREE.Group();
+  g.add(vcMesh([[0.08, 1.1, 0.08, 0, 0.55, 0, '#4b5157'], [0.42, 0.5, 0.3, 0, 1.25, 0, '#f2c200'],
+    [0.44, 0.06, 0.32, 0, 1.52, 0, '#d9ad00'], [0.25, 0.03, 0.02, 0, 1.38, 0.16, '#222222']], 'mailbox'));
+  g.position.set(x, 0, z);
+  scene.add(g);
+  const p = new Piece(g, 'metal', 40, { kind: 'prop', center: new THREE.Vector3(x, 0.9, z) });
+  p.boxC(x, 0.75, z, 0.45, 1.5, 0.35);
+}
+
+// Weit entfernte Dinge ausblenden (spart viel Rechenzeit, der Nebel versteckt es sowieso)
+function cullFar(cam) {
+  const far2 = 400 * 400, prop2 = 230 * 230, small2 = 150 * 150, beam2 = 900 * 900;
+  for (const p of Pieces) {
+    if (!p.obj) continue;
+    const dx = p.center.x - cam.x, dz = p.center.z - cam.z;
+    p.obj.visible = dx * dx + dz * dz < (p.kind === 'prop' ? prop2 : far2);
+  }
+  for (const ch of Chests.list) {
+    const dx = ch.pos.x - cam.x, dz = ch.pos.z - cam.z;
+    ch.group.visible = dx * dx + dz * dz < (ch.blue && !ch.opened ? beam2 : small2);
+  }
+  for (const gi of GroundItems.list) {
+    const dx = gi.pos.x - cam.x, dz = gi.pos.z - cam.z;
+    gi.group.visible = dx * dx + dz * dz < 140 * 140;
+  }
 }

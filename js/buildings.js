@@ -172,7 +172,7 @@ function makeBuilding(scene, x0, z0, tw, td, floors, opts) {
     pp.box(x0 + tw * T - 0.15, top, z0, x0 + tw * T + 0.15, top + 0.72, z0 + td * T);
   }
   // Kisten im Gebäude
-  const chestCount = opts.chests || 1;
+  const chestCount = opts.chests !== undefined ? opts.chests : 1;
   for (let c = 0; c < chestCount; c++) {
     const f = floors > 1 ? (c === 0 ? floors - 1 : rndi(0, floors - 1)) : 0;
     let ci = rndi(0, tw - 1), cj = rndi(0, td - 1);

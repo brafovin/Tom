@@ -1,7 +1,7 @@
 # Sturmstadt
 
-Ein kleines 3D-Kampf-und-Bau-Spiel für den Browser. Du landest mit dem Gleiter
-über einer Stadt, suchst Waffen in Kisten, baust Wände und Rampen und kämpfst
+Ein kleines 3D-Kampf-und-Bau-Spiel für den Browser. Alle Spieler fliegen in einem
+Bus mit Ballon über die Karte und springen ab. Du suchst Waffen in Kisten, baust Wände und Rampen und kämpfst
 gegen Bots. Nach einer Minute kommt der Sturm und der sichere Bereich wird
 immer kleiner. Wer zuletzt übrig ist, gewinnt.
 
@@ -18,6 +18,18 @@ npx serve .
 ```
 
 ## Was drin ist
+
+- **Kampfbus**: Alle starten im fliegenden Bus. Mit der Leertaste springst du ab,
+  erst im freien Fall, dann öffnet sich der Gleiter (automatisch oder mit Leertaste)
+- **Todesanimation**: Wer ausscheidet, kippt um und wird mit einem Lichtstrahl
+  hochgebeamt. Scheidest du selbst aus, kippt die Kamera um und das Bild wird grau
+- **Kisten überall** auf der Karte, jede Runde an anderen Stellen
+- **Blaue Kisten**: 1 bis 2 pro Runde (eine immer auf der Insel) mit legendären
+  Waffen, Schild, Medikit und Material. Eine Lichtsäule zeigt, wo sie stehen
+- **Schlechte Waffen am Boden**: herumliegende Waffen sind nur grau oder grün
+- **16 kleine Häuser** im Land (Holzhütte, Bauernhaus, Bungalow, Schuppen, Ferienhaus,
+  Werkstatt …) mit Briefkasten und Mülltonne
+- **Echtere Waffenmodelle** mit Lauf, Visier, Zielfernrohr, Magazin und Schaft
 
 - **Große Karte** (600 × 600 m) mit Landstraßen aus der Stadt hinaus
 - **Wasser**: drei Seen und ein Fluss mit Brücken. Im Wasser schwimmt man,
@@ -51,7 +63,7 @@ npx serve .
 | --- | --- |
 | W A S D | Laufen |
 | Shift | Sprinten |
-| Leertaste | Springen |
+| Leertaste | Springen · aus dem Bus springen · Gleiter öffnen |
 | C halten | Schleichen |
 | Shift + C | Rutschen (beim Sprinten) |
 | W + Leertaste halten | An einer Wand hochklettern |
@@ -86,6 +98,7 @@ npx serve .
 | `js/player.js` | Spieler, Inventar, Spitzhacke |
 | `js/bots.js` | Gegner-KI |
 | `js/zone.js` | Der Sturm |
+| `js/bus.js` | Der Kampfbus mit Ballon, Absprung, Gleiter |
 | `js/ui.js` | Lebensbalken, Inventar, Minikarte, Meldungen |
 | `js/game.js` | Spielablauf und Hauptschleife |
 

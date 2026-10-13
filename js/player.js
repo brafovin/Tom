@@ -39,6 +39,7 @@ class Player {
     this.slideT = 0; this.slideSpeed = 0; this.slideDir = new THREE.Vector3();
     this.climbing = false; this.stamina = 1; this.mantleT = 0;
     this.swimming = false;
+    this.inBus = false; this.freefall = false;
     this.eyeNow = this.eye;
     this.roll = 0;
 
@@ -98,7 +99,7 @@ class Player {
   // ---------- Schaden ----------
   takeDamage(dmg, from, head) {
     if (!this.alive) return false;
-    if (this.gliding && this.pos.y > 20) return false;
+    if (this.inBus || (this.gliding && this.pos.y > 20)) return false;
     let rest = dmg;
     if (this.shield > 0 && from !== 'zone') {
       const s = Math.min(this.shield, rest);
@@ -207,6 +208,17 @@ class Player {
     this.pitch = clamp(this.pitch - Input.dy * sens, -1.5, 1.5);
     Input.dx = 0; Input.dy = 0;
 
+    // Im Bus: Kamera schaut von außen auf den Bus, Leertaste = abspringen
+    if (this.inBus) {
+      this.viewRoot.visible = false;
+      const L = this.lookDir();
+      this.camera.position.copy(Bus.pos).addScaledVector(L, -24).add(new THREE.Vector3(0, 6, 0));
+      this.camera.lookAt(Bus.pos.x, Bus.pos.y + 3, Bus.pos.z);
+      Sound.listener.copy(this.camera.position);
+      if (Input.pressed.Space) { Bus.drop(this); Sound.play('swing'); }
+      return;
+    }
+
     // Tasten (einmalig gedrückt)
     const P = Input.pressed;
     for (let i = 1; i <= 7; i++) if (P['Digit' + i]) this.select(i - 1);
@@ -260,7 +272,7 @@ class Player {
     else if (this.crouching && solidOverlaps(this.pos.x, this.pos.y + 0.1, this.pos.z, this.r * 0.9, 1.75, _hits).length === 0) this.crouching = false;
     this.h = this.crouching ? 1.2 : 1.8;
 
-    let speed = this.gliding ? 14 : (sprint ? 8.2 : 5.6);
+    let speed = this.gliding ? (this.freefall ? 18 : 14) : (sprint ? 8.2 : 5.6);
     if (this.crouching) speed = 2.8;
     if (this.swimming) speed = sprint ? 4.8 : 3.6;
     if (this.using) speed *= 0.5;
@@ -302,9 +314,14 @@ class Player {
     if (this.onGround) this.stamina = Math.min(1, this.stamina + dt * 0.6);
 
     if (this.gliding) {
-      this.vel.y = -11;
+      // erst freier Fall, dann öffnet sich der Gleiter (automatisch oder mit Leertaste)
+      const above = this.pos.y - groundHeight(this.pos.x, this.pos.z, this.r, this.pos.y);
+      if (this.freefall && (above < 45 || (Input.pressed.Space && above > 12))) {
+        this.freefall = false; Sound.play('glider'); UI.dirty = true;
+      }
+      this.vel.y = this.freefall ? -30 : -11;
       moveBody(this, dt, 0);
-      if (this.onGround) { this.gliding = false; UI.dirty = true; UI.toast('Gelandet! Such dir Waffen in Kisten.'); }
+      if (this.onGround || this.swimming) { this.gliding = false; this.freefall = false; UI.dirty = true; UI.toast('Gelandet! Such dir Waffen in Kisten.'); }
     } else {
       if (Input.pressed.Space && this.onGround && !this.climbing) {
         this.vel.y = this.crouching && !sliding ? 6.2 : 7.6;
@@ -407,11 +424,12 @@ class Player {
     let spreadMul = (1 + this.bloom * 40) * (this.aim > 0.5 ? 0.45 : 1) * (moving ? 1.5 : 1) * (this.onGround ? 1 : 2);
     if (w.scope && this.aim < 0.8) spreadMul = 12;
     if (it.key === 'shotgun') spreadMul = this.aim > 0.5 ? 0.8 : 1;
-    const muzzle = this.camera.localToWorld(new THREE.Vector3(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z - 0.6));
+    const mz = MUZZLE_Z[it.key] * 0.85;
+    const muzzle = this.camera.localToWorld(new THREE.Vector3(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z + mz));
     const res = Combat.fire(this, it, eye, dir, spreadMul, muzzle);
     this.bloom = Math.min(0.06, this.bloom + w.bloom);
     this.recoil += w.kick;
-    this.flash.position.set(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z - (it.key === 'pistol' ? 0.25 : 0.75));
+    this.flash.position.set(this.viewRoot.position.x, this.viewRoot.position.y + 0.03, this.viewRoot.position.z + mz - 0.03);
     this.flash.rotation.z = Math.random() * 3;
     this.flashT = 0.05;
     if (res.hits) { UI.hitMarker(res.head, res.kill); Sound.play(res.head ? 'headshot' : 'hit'); }

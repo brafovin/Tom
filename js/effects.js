@@ -8,6 +8,7 @@ const Effects = {
   tracers: [],
   booms: [],
   numbers: [],
+  beams: [],
   partGeo: null,
 
   init(scene) {
@@ -62,6 +63,19 @@ const Effects = {
     }
   },
 
+  // Lichtstrahl, der ausgeschiedene Spieler wegbeamt
+  beam(pos) {
+    const m = new THREE.Mesh(cachedGeo('beamfx', () => new THREE.CylinderGeometry(0.9, 0.9, 40, 16, 1, true)),
+      new THREE.MeshBasicMaterial({ color: '#6fd0ff', transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    m.position.copy(pos).setY(pos.y + 20);
+    this.scene.add(m);
+    this.beams.push({ mesh: m, life: 1.1, max: 1.1 });
+    for (let i = 0; i < 24; i++) {
+      this.particle(pos.clone().add(new THREE.Vector3(mrnd(-0.6, 0.6), mrnd(0, 1.8), mrnd(-0.6, 0.6))), pick(['#6fd0ff', '#ffffff', '#a8e6ff']),
+        new THREE.Vector3(mrnd(-0.5, 0.5), mrnd(6, 14), mrnd(-0.5, 0.5)), mrnd(0.8, 1.4), 0.6, -2);
+    }
+  },
+
   dmgNumber(pos, amount, color = '#ffffff', big = false) {
     const el = document.createElement('div');
     el.className = 'dmgnum' + (big ? ' big' : '');
@@ -97,6 +111,14 @@ const Effects = {
       b.mesh.material.opacity = 0.9 * (1 - k);
       if (b.life <= 0) { this.scene.remove(b.mesh); b.mesh.material.dispose(); this.booms.splice(i, 1); }
     }
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      const b = this.beams[i];
+      b.life -= dt;
+      const k = b.life / b.max;
+      b.mesh.material.opacity = 0.6 * k;
+      b.mesh.scale.set(0.4 + k * 0.6, 1, 0.4 + k * 0.6);
+      if (b.life <= 0) { this.scene.remove(b.mesh); b.mesh.material.dispose(); this.beams.splice(i, 1); }
+    }
     const w = window.innerWidth, h = window.innerHeight;
     const v = new THREE.Vector3();
     for (let i = this.numbers.length - 1; i >= 0; i--) {
@@ -120,6 +142,7 @@ const Effects = {
     for (const t of this.tracers) this.scene.remove(t.line);
     for (const b of this.booms) this.scene.remove(b.mesh);
     for (const n of this.numbers) n.el.remove();
-    this.parts = []; this.tracers = []; this.booms = []; this.numbers = [];
+    for (const b of this.beams) this.scene.remove(b.mesh);
+    this.parts = []; this.tracers = []; this.booms = []; this.numbers = []; this.beams = [];
   },
 };

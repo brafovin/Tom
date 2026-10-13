@@ -228,6 +228,44 @@ function boxesGeo(list, uvScale = 0.25) {
   return geo;
 }
 
+// Ein Mesh aus vielen Teilen (Kisten und Zylinder, auch gedreht), mit Vertex-Farben.
+// Teil: { t: 'box' | 'cyl', s: [b, h, t] bzw. [rVorne, rHinten, länge, segmente?], p: [x, y, z], r: [rx, ry, rz], c: farbe }
+// Zylinder liegen standardmäßig entlang -z (vorne = -z)
+function partsGeo(parts) {
+  const pos = [], nor = [], col = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+  const one = new THREE.Vector3(1, 1, 1), at = new THREE.Vector3();
+  for (const p of parts) {
+    let g = p.t === 'cyl' ? new THREE.CylinderGeometry(p.s[0], p.s[1], p.s[2], p.s[3] || 12)
+                          : new THREE.BoxGeometry(p.s[0], p.s[1], p.s[2]);
+    const r = p.r || (p.t === 'cyl' ? [-Math.PI / 2, 0, 0] : [0, 0, 0]);
+    e.set(r[0], r[1], r[2]);
+    m.compose(at.set(p.p[0], p.p[1], p.p[2]), q.setFromEuler(e), one);
+    g.applyMatrix4(m);
+    const ni = g.toNonIndexed();
+    g.dispose();
+    const pa = ni.attributes.position.array, na = ni.attributes.normal.array;
+    c.set(p.c);
+    for (let i = 0; i < pa.length; i++) { pos.push(pa[i]); nor.push(na[i]); }
+    for (let i = 0; i < pa.length / 3; i++) col.push(c.r, c.g, c.b);
+    ni.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+let GUN_MAT = null;
+function partsMesh(parts, cacheKey) {
+  if (!GUN_MAT) GUN_MAT = new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 55, specular: '#555a60' });
+  const geo = cacheKey ? cachedGeo(cacheKey, () => partsGeo(parts)) : partsGeo(parts);
+  const m = new THREE.Mesh(geo, GUN_MAT);
+  m.castShadow = true;
+  return m;
+}
+
 // Ein Mesh aus vielen farbigen Kisten
 let VC_MAT = null;
 function vcMesh(list, cacheKey) {
@@ -319,6 +357,8 @@ const Sound = {
       case 'heal': this.tone(440, 0.3, 0.15, 'sine', 440); break;
       case 'shield': this.tone(660, 0.3, 0.15, 'sine', 660); break;
       case 'empty': this.tone(1200, 0.03, 0.15, 'square'); break;
+      case 'glider': this.burst(0.6, 600, 0.7, 0.4 * v, 'bandpass'); this.tone(330, 0.2, 0.12, 'triangle', 220); break;
+      case 'beam': this.tone(520, 0.6, 0.12, 'sine', 900); this.tone(780, 0.6, 0.08, 'sine', 1200, 0.1); break;
       case 'splash': this.burst(0.5, 900, 0.6, 0.7 * v); this.burst(0.3, 2500, 1, 0.3 * v, 'highpass', 0.05); break;
       case 'slide': this.burst(0.5, 700, 0.8, 0.35 * v, 'bandpass'); break;
       case 'zone': this.tone(110, 1.2, 0.3, 'sawtooth', 50); break;

@@ -101,7 +101,7 @@ const Builds = {
     if (pl.type !== 'ramp') {
       const [a, b, c, d, e, f] = pl.box;
       for (const ent of Entities) {
-        if (!ent.alive) continue;
+        if (!ent.alive || ent.inBus) continue;
         const p = ent.pos;
         if (a < p.x + ent.r && d > p.x - ent.r && c < p.z + ent.r && f > p.z - ent.r && b < p.y + ent.h && e > p.y + 0.15) return false;
       }

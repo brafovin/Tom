@@ -115,7 +115,7 @@ const Zone = {
       this.tickT = 1;
       for (const e of Entities) {
         if (!e.alive || !this.isOutside(e.pos)) continue;
-        if (e.isPlayer && e.gliding && e.pos.y > 20) continue;
+        if (e.inBus || (e.gliding && e.pos.y > 20)) continue;
         e.takeDamage(this.dps, 'zone', false);
         if (e.isPlayer) Effects.dmgNumber(e.pos.clone().setY(e.pos.y + 1.2).add(e.forward().multiplyScalar(1.5)), this.dps, '#c79bff');
       }
